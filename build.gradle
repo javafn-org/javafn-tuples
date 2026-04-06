@@ -1,0 +1,82 @@
+plugins {
+    id 'java-library'
+	id 'maven-publish'
+	id 'signing'
+	id 'net.thebugmc.gradle.sonatype-central-portal-publisher' version "1.2.4"
+}
+
+sourceCompatibility = JavaVersion.VERSION_17
+targetCompatibility = JavaVersion.VERSION_17
+
+group = 'org.javafn'
+version = "${major}.${minor}.${patch}"
+
+java {
+    withJavadocJar()
+    withSourcesJar()
+}
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+    testImplementation('junit:junit:4.13.1')
+}
+
+centralPortal {
+	username = System.getenv("OSSRH_SONATYPE_USERNAME")
+	password = System.getenv("OSSRH_SONATYPE_PASSWORD")
+
+	pom {
+		name = 'JavaFn Tuples'
+		description = 'Pair, Trio, and Quad tuples that work well with streams.'
+		url = 'https://github.com/javafn-org/javafn-tuples'
+		scm {
+			connection = 'scm:git:git://github.com:javafn-org/javafn-tuples.git'
+			developerConnection = 'scm:git:ssh://git@github.com:javafn-org/javafn-tuples.git'
+			url = 'https://github.com/javafn-org/javafn-tuples'
+		}
+		licenses {
+			license {
+				name = 'BSD-3-Clause'
+				url = 'https://opensource.org/license/BSD-3-clause/'
+			}
+		}
+		developers {
+			developer {
+				id = 'ben-stringer'
+				name = 'Ben Stringer'
+				email = 'ben.stringer.jr@javafn.org'
+			}
+			developer {
+				id = 'Archthebald'
+				name = 'Dakota Maulding'
+				email = ''
+			}
+			developer {
+				id = 'TrevorPatorno'
+				name = 'Trevor Patorno'
+				email = ''
+			}
+			developer {
+				id = 'nichipedia'
+				name = 'Nicholas Moran'
+				email = ''
+			}
+		}
+	}
+}
+
+signing {
+	useGpgCmd()
+	project.ext.set('signing.gnupg.executable', 'gpg')
+	project.ext.set('signing.gnupg.keyName', System.getenv("OSSRH_GPG_ID"))
+	project.ext.set('signing.gnupg.passphrase', System.getenv("OSSRH_GPG_SECRET_KEY_PASSWORD"))
+}
+
+tasks.withType(Sign) {
+	onlyIf { System.getenv().containsKey("CI") }
+}
+
