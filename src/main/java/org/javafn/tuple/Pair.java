@@ -67,7 +67,7 @@ import java.util.stream.Stream;
  *     public static <A, B, C, D> org.javatuples.Quartet<A, B, C, D>  to(final Quad<A, B, C, D>  quad) {
  *         return new org.javatuples.Quartet<>(quad.v1(), quad.v2(), quad.v3(), quad.v4());
  *     }
- *     private Tuples() { throw new AssertionError("This is a static class and should not be instantiated."); }
+ *     private Tuples() { throw new IllegalStateException("This is a static class and should not be instantiated."); }
  * }
  * }</pre>
  */

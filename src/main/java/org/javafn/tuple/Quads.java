@@ -126,5 +126,5 @@ public class Quads {
     public static <A> Stream<A> stream(final Quad<A,A,A,A> quad)
     { return Stream.of(quad.v1(), quad.v2(), quad.v3(), quad.v4()); }
 
-    private Quads() { throw new AssertionError("This is a static class and should never be instantiated"); }
+    private Quads() { throw new IllegalStateException("This is a static class and should never be instantiated"); }
 }

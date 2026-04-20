@@ -131,5 +131,5 @@ public class Trios {
     public static <A> Function<Trio<A,A,A>, Stream<A>> stream() { return Trios::stream; }
     public static <A> Stream<A> stream(final Trio<A, A, A> trio) { return Stream.of(trio.v1(), trio.v2(), trio.v3()); }
 
-    private Trios() { throw new AssertionError("This is a static class and should never be instantiated"); }
+    private Trios() { throw new IllegalStateException("This is a static class and should never be instantiated"); }
 }

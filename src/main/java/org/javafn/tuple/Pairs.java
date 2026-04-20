@@ -258,5 +258,5 @@ public class Pairs {
     /** Return a function that calls {@link Pair#from(Map.Entry)}. */
     public static <KEY, VAL> Function<Map.Entry<KEY, VAL>, Pair<KEY, VAL>> from() { return Pair::from; }
 
-    private Pairs() { throw new AssertionError("This is a static class and should never be instantiated"); }
+    private Pairs() { throw new IllegalStateException("This is a static class and should never be instantiated"); }
 }

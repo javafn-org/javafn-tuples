@@ -32,5 +32,5 @@ public class Indexed {
         return new StreamIndexer<TT>()::accept;
     }
 
-    private Indexed() { throw new AssertionError("This is a static class and should never be instantiated"); }
+    private Indexed() { throw new IllegalStateException("This is a static class and should never be instantiated"); }
 }
