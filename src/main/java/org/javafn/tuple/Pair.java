@@ -1,7 +1,6 @@
 package org.javafn.tuple;
 
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
@@ -71,29 +70,22 @@ import java.util.stream.Stream;
  * }
  * }</pre>
  */
-public final class Pair<V1, V2> {
+public record Pair<V1, V2>(V1 v1, V2 v2) {
 
     /**
-     * Create a Pair from an {@link java.util.Map.Entry}where the entry key is
+     * Create a Pair from an {@link Map.Entry}where the entry key is
      * the first element and the value is the second element.
      */
     public static <KEY, VAL> Pair<KEY, VAL> from(final Map.Entry<KEY, VAL> e) {
         return new Pair<>(e.getKey(), e.getValue());
     }
+
     /**
      * Create a Pair with the supplied values.
      */
-    public static <A, B> Pair<A, B> of(final A a, final B b) { return new Pair<>(a, b); }
-
-    private final V1 v1;
-    private final V2 v2;
-
-    private Pair(final V1 _v1, final V2 _v2) { v1 = _v1; v2 = _v2; }
-
-    /** Get the first element of this pair */
-    public V1 v1() { return v1; }
-    /** Get the second element of this pair */
-    public V2 v2() { return v2; }
+    public static <A, B> Pair<A, B> of(final A a, final B b) {
+        return new Pair<>(a, b);
+    }
 
     /**
      * Return a new pair using the supplied argument as the first element
@@ -104,7 +96,10 @@ public final class Pair<V1, V2> {
      * final Pair<String, String> b = a.v1("42");
      * }</pre>
      */
-    public <NV1> Pair<NV1, V2> v1(final NV1 nv1) { return Pair.of(nv1, v2); }
+    public <NV1> Pair<NV1, V2> v1(final NV1 nv1) {
+        return Pair.of(nv1, v2);
+    }
+
     /**
      * Return a new pair using the supplied argument as the second element
      * and this pair's first element as the new pair's first element.
@@ -114,7 +109,9 @@ public final class Pair<V1, V2> {
      * final Pair<Integer, Long> b = a.v2(42L);
      * }</pre>
      */
-    public <NV2> Pair<V1, NV2> v2(final NV2 nv2) { return Pair.of(v1, nv2); }
+    public <NV2> Pair<V1, NV2> v2(final NV2 nv2) {
+        return Pair.of(v1, nv2);
+    }
 
     /**
      * Execute the supplied function on this Pair's values and return the result.
@@ -125,7 +122,10 @@ public final class Pair<V1, V2> {
      * // 42, forty-two
      * }</pre>
      */
-    public <R> R map(final BiFunction<V1, V2, R> fn) { return fn.apply(v1, v2); }
+    public <R> R map(final BiFunction<V1, V2, R> fn) {
+        return fn.apply(v1, v2);
+    }
+
     /**
      * Execute the supplied function on this Pair's first value and return a new pair where the
      * first element is the result of the mapping function and the second is this pair's second element.
@@ -134,7 +134,10 @@ public final class Pair<V1, V2> {
      * final Pair<String, String> b = a.map1(Integer::toString);
      * }</pre>
      */
-    public <NV1> Pair<NV1, V2> map1(final Function<V1, NV1> fn) { return Pair.of(fn.apply(v1), v2); }
+    public <NV1> Pair<NV1, V2> map1(final Function<V1, NV1> fn) {
+        return Pair.of(fn.apply(v1), v2);
+    }
+
     /**
      * Execute the supplied function on this Pair's second value and return a new pair where the
      * second element is the result of the mapping function and the first is this pair's first element.
@@ -143,7 +146,10 @@ public final class Pair<V1, V2> {
      * final Pair<Integer, CustomValue> b = a.map1(key -> customDatabase.get(key));
      * }</pre>
      */
-    public <NV2> Pair<V1, NV2> map2(final Function<V2, NV2> fn) { return Pair.of(v1, fn.apply(v2)); }
+    public <NV2> Pair<V1, NV2> map2(final Function<V2, NV2> fn) {
+        return Pair.of(v1, fn.apply(v2));
+    }
+
     /**
      * Execute the supplied function on this Pair's values and return a new pair where the
      * first element is the result of the mapping function and the second is this pair's second element.
@@ -154,7 +160,10 @@ public final class Pair<V1, V2> {
      * // Pair("42, forty-two", "forty-two")
      * }</pre>
      */
-    public <NV1> Pair<NV1, V2> map1(final BiFunction<V1, V2, NV1> fn) { return Pair.of(fn.apply(v1, v2), v2); }
+    public <NV1> Pair<NV1, V2> map1(final BiFunction<V1, V2, NV1> fn) {
+        return Pair.of(fn.apply(v1, v2), v2);
+    }
+
     /**
      * Execute the supplied function on this Pair's values and return a new pair where the
      * second element is the result of the mapping function and the first is this pair's first element.
@@ -164,13 +173,29 @@ public final class Pair<V1, V2> {
      *          (intKey, propName) -> customDatabase.get(intKey).getProperty(propName)));
      * }</pre>
      */
-    public <NV2> Pair<V1, NV2> map2(final BiFunction<V1, V2, NV2> fn) { return Pair.of(v1, fn.apply(v1, v2)); }
+    public <NV2> Pair<V1, NV2> map2(final BiFunction<V1, V2, NV2> fn) {
+        return Pair.of(v1, fn.apply(v1, v2));
+    }
 
-    /** TODO: Document */
-    public <NV1> Stream<Pair<NV1, V2>> flatMap1(final BiFunction<V1, V2, Stream<NV1>> fn) { return fn.apply(v1, v2).map(nv1 -> Pair.of(nv1, v2)); }
-    public <NV2> Stream<Pair<V1, NV2>> flatMap2(final BiFunction<V1, V2, Stream<NV2>> fn) { return fn.apply(v1, v2).map(nv2 -> Pair.of(v1, nv2)); }
-    public <NV1> Stream<Pair<NV1, V2>> flatMap1(final Function<V1, Stream<NV1>> fn) { return fn.apply(v1).map(nv1 -> Pair.of(nv1, v2)); }
-    public <NV2> Stream<Pair<V1, NV2>> flatMap2(final Function<V2, Stream<NV2>> fn) { return fn.apply(v2).map(nv2 -> Pair.of(v1, nv2)); }
+    /**
+     * TODO: Document
+     */
+    public <NV1> Stream<Pair<NV1, V2>> flatMap1(final BiFunction<V1, V2, Stream<NV1>> fn) {
+        return fn.apply(v1, v2).map(nv1 -> Pair.of(nv1, v2));
+    }
+
+    public <NV2> Stream<Pair<V1, NV2>> flatMap2(final BiFunction<V1, V2, Stream<NV2>> fn) {
+        return fn.apply(v1, v2).map(nv2 -> Pair.of(v1, nv2));
+    }
+
+    public <NV1> Stream<Pair<NV1, V2>> flatMap1(final Function<V1, Stream<NV1>> fn) {
+        return fn.apply(v1).map(nv1 -> Pair.of(nv1, v2));
+    }
+
+    public <NV2> Stream<Pair<V1, NV2>> flatMap2(final Function<V2, Stream<NV2>> fn) {
+        return fn.apply(v2).map(nv2 -> Pair.of(v1, nv2));
+    }
+
     /**
      * Execute the supplied consumer on this Pair's values and return this Pair unmodified.
      * Useful for inspections.
@@ -178,7 +203,11 @@ public final class Pair<V1, V2> {
      * pair.peek( (l, r) -> System.out.println("Left: " + l + ", Right: " + r));
      * }</pre>
      */
-    public Pair<V1, V2> peek(final BiConsumer<V1, V2> fn) { fn.accept(v1, v2); return this; }
+    public Pair<V1, V2> peek(final BiConsumer<V1, V2> fn) {
+        fn.accept(v1, v2);
+        return this;
+    }
+
     /**
      * Execute the supplied consumer on this Pair's values and return this Pair unmodified.
      * Useful for inspections.
@@ -186,7 +215,11 @@ public final class Pair<V1, V2> {
      * pair.peek1(l -> System.out.println("Left: " + l));
      * }</pre>
      */
-    public Pair<V1, V2> peek1(final Consumer<V1> fn) { fn.accept(v1); return this; }
+    public Pair<V1, V2> peek1(final Consumer<V1> fn) {
+        fn.accept(v1);
+        return this;
+    }
+
     /**
      * Execute the supplied consumer on this Pair's values and return this Pair unmodified.
      * Useful for inspections.
@@ -194,36 +227,38 @@ public final class Pair<V1, V2> {
      * pair.peek2(r -> System.out.println("Right: " + r));
      * }</pre>
      */
-    public Pair<V1, V2> peek2(final Consumer<V2> fn) { fn.accept(v2); return this; }
+    public Pair<V1, V2> peek2(final Consumer<V2> fn) {
+        fn.accept(v2);
+        return this;
+    }
 
     /**
      * Return the result of executing the supplied predicate on this pair's values.
      */
-    public boolean matches(final BiPredicate<V1, V2> fn) { return fn.test(v1, v2); }
+    public boolean matches(final BiPredicate<V1, V2> fn) {
+        return fn.test(v1, v2);
+    }
+
     /**
      * Return the result of executing the supplied predicate on this pair's first value.
      */
-    public boolean matches1(final Predicate<V1> fn) { return fn.test(v1); }
+    public boolean matches1(final Predicate<V1> fn) {
+        return fn.test(v1);
+    }
+
     /**
      * Return the result of executing the supplied predicate on this pair's second value.
      */
-    public boolean matches2(final Predicate<V2> fn) { return fn.test(v2); }
+    public boolean matches2(final Predicate<V2> fn) {
+        return fn.test(v2);
+    }
 
     /**
      * Execute the supplied consumer on this Pair's values.
      * Similar to {@link #peek(BiConsumer)}, except no value is returned.
      * Useful to ensure inspections will point out an unused value with peek but not for forEach.
      */
-    public void consume(final BiConsumer<V1, V2> fn) { fn.accept(v1, v2); }
-
-    @Override public int hashCode() { return Objects.hash(v1, v2); }
-
-    @Override public boolean equals(final Object obj) {
-        if (obj instanceof Pair<?, ?> that) {
-            return Objects.equals(v1, that.v1) && Objects.equals(v2, that.v2);
-        }
-        return false;
+    public void consume(final BiConsumer<V1, V2> fn) {
+        fn.accept(v1, v2);
     }
-
-    @Override public String toString() { return "Pair(" + v1 + ", " + v2 + ")"; }
 }
