@@ -1,4 +1,5 @@
 plugins {
+	id 'java'
     id 'java-library'
 	id 'maven-publish'
 	id 'signing'
@@ -21,8 +22,31 @@ repositories {
     mavenCentral()
 }
 
+def generatedMainJava = file("$buildDir/generated/main/java")
+
+sourceSets {
+	codeGen {
+		java.srcDir 'src/codeGen/java'
+	}
+	main {
+		java.srcDirs += generatedMainJava
+	}
+}
+
+
+tasks.register('genSrc', JavaExec) {
+	group = 'code generation'
+	description = 'Generates source'
+	classpath = sourceSets.codeGen.runtimeClasspath
+	mainClass = 'org.javafn.tuple.GenerateTuples'
+	outputs.dir generatedMainJava
+}
+
+tasks.named('compileJava') { dependsOn tasks.named('genSrc') }
+
 dependencies {
-    testImplementation('junit:junit:4.13.1')
+	codeGenImplementation('com.palantir.javapoet:javapoet:0.14.0')
+	testImplementation('junit:junit:4.13.1')
 }
 
 centralPortal {
