@@ -12,6 +12,8 @@ import com.palantir.javapoet.TypeVariableName;
 import javax.lang.model.element.Modifier;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
@@ -31,11 +33,11 @@ public class GenerateTuples {
             ClassName mapper
     ) {
         public IntStream idx() { return IntStream.range(1, numElements + 1); }
-        public ParameterizedTypeName parameterizedMapper(final List<Var> vars, TypeVariableName retType) {
+        public ParameterizedTypeName parameterizedMapper(final List<TypeVariableName> vars, TypeVariableName retType) {
             final int nArgs = vars.size();
             final TypeName[] args = new TypeName[nArgs + 1];
-            for (int i = 0; i < vars.size(); i++) {
-                args[i] = vars.get(i).type;
+            for (int i = 0; i < nArgs; i++) {
+                args[i] = vars.get(i);
             }
             args[nArgs] = retType;
             return ParameterizedTypeName.get(mapper, args);
@@ -62,40 +64,59 @@ public class GenerateTuples {
     }
 
     static void genTuple(final File packageDir, final Tuple tuple) throws IOException {
-        final List<Var> vars = tuple.idx()
-                .mapToObj(i -> {
-                    final var type = TypeVariableName.get("V" + i);
-                    final var field = ParameterSpec.builder(type, "v" + i).build();
-                    return new Var(type, field);
-                })
+        final List<TypeVariableName> varTypes = tuple.idx()
+                .mapToObj(i -> TypeVariableName.get("V" + i))
+                .toList();
+        final List<ParameterSpec> varFields = tuple.idx()
+                .mapToObj(i -> ParameterSpec.builder(varTypes.get(i-1), "v" + i).build())
                 .toList();
         final TypeVariableName zType = TypeVariableName.get("Z");
+        final ParameterSpec zField = ParameterSpec.builder(zType, "z").build();
 
-        final TypeSpec tupleClass = TypeSpec.recordBuilder(tuple.name)
-                .addTypeVariables(vars.stream().map(Var::type).toList())
+        final var tupleClassBuilder = TypeSpec.recordBuilder(tuple.name);
+
+        tupleClassBuilder
+                .addTypeVariables(varTypes)
                 .recordConstructor(MethodSpec.constructorBuilder()
-                        .addParameters(vars.stream().map(Var::field).toList())
+                        .addParameters(varFields)
                         .build())
                 .addMethod(MethodSpec.methodBuilder("of")
-                        .returns(TypeVariableName.get(tuple.name.simpleName()))
-                        .addTypeVariables(vars.stream().map(Var::type).toList())
-                        .addParameters(vars.stream().map(Var::field).toList())
+                        .returns(ParameterizedTypeName.get(tuple.name, varTypes.toArray(TypeVariableName[]::new)))
+                        .addTypeVariables(varTypes)
+                        .addParameters(varFields)
                         .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
                         .addStatement("return new $L<>($L)", tuple.name.simpleName(),
-                                vars.stream().map(Var::field).map(ParameterSpec::name).collect(Collectors.joining(", ")))
+                                varFields.stream().map(ParameterSpec::name).collect(Collectors.joining(", ")))
                         .build())
                 .addMethod(MethodSpec.methodBuilder("map")
                         .addTypeVariable(zType)
                         .returns(zType)
                         .addParameter(ParameterSpec.builder(
-                                tuple.parameterizedMapper(vars, zType), "fn", Modifier.FINAL)
+                                tuple.parameterizedMapper(varTypes, zType), "fn", Modifier.FINAL)
                                 .build())
                         .addModifiers(Modifier.PUBLIC)
-                        .addStatement("return fn.apply($L)", vars.stream()
-                                .map(Var::field).map(ParameterSpec::name)
+                        .addStatement("return fn.apply($L)", varFields.stream()
+                                .map(ParameterSpec::name)
                                 .collect(Collectors.joining(", ")))
-                        .build())
-                .build();
-        JavaFile.builder(PACKAGE_NAME, tupleClass).build().writeTo(packageDir);
+                        .build());
+        tuple.idx().forEach(i -> {
+            final TypeVariableName[] types = varTypes.toArray(TypeVariableName[]::new);
+            types[i-1] = zType;
+            final List<ParameterSpec> fields = new ArrayList<>(varFields);
+            fields.set(i-1, zField);
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("v" + i)
+                    .addTypeVariable(zType)
+                    .returns(ParameterizedTypeName.get(tuple.name, types))
+                    .addParameter(ParameterSpec.builder(zType, "z").addModifiers(Modifier.FINAL).build())
+                    .addModifiers(Modifier.PUBLIC)
+                    .addStatement("return $T.of($L)",
+                            tuple.name,
+                            fields.stream().map(ParameterSpec::name).collect(Collectors.joining(", ")))
+                    .build());
+        });
+
+        JavaFile.builder(PACKAGE_NAME, tupleClassBuilder.build())
+                .build()
+                .writeTo(packageDir);
     }
 }
