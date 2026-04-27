@@ -22,11 +22,17 @@ public class GenerateTuples {
 
     public static final String PACKAGE_NAME = "org.javafn.tuples";
 
+    static String capitalize(final String name) {
+        return name.substring(0, 1).toUpperCase(Locale.ROOT) + name.substring(1);
+    }
+
     static TypeName singlePredicateFor(final TypeName type, final TypeName typeName) {
         if (!type.isPrimitive()) {
             return ParameterizedTypeName.get(ClassName.get(Predicate.class), typeName);
         } else if (type == TypeName.INT) {
             return TypeName.get(IntPredicate.class);
+        } else if (type == TypeName.LONG) {
+            return TypeName.get(LongPredicate.class);
         }
         throw new IllegalStateException("Single predicate type not implemented for " + type);
     }
@@ -35,6 +41,8 @@ public class GenerateTuples {
             return ParameterizedTypeName.get(ClassName.get(Consumer.class), typeName);
         } else if (type == TypeName.INT) {
             return TypeName.get(IntConsumer.class);
+        } else if (type == TypeName.LONG) {
+            return TypeName.get(LongConsumer.class);
         }
         throw new IllegalStateException("Single consumer type not implemented for " + type);
     }
@@ -44,7 +52,6 @@ public class GenerateTuples {
             final Tuple tuple,
             final TypeName type,
             final TypeName typeName,
-            final ParameterizedTypeName thisType,
             final MethodSpec.Builder method) {
         final ParameterSpec fnParam;
         final String fnApplyName;
@@ -57,17 +64,18 @@ public class GenerateTuples {
                     .build();
             fnApplyName = "apply";
         } else if (type == TypeName.INT) {
-            fnParam = ParameterSpec.builder(
-                    ClassName.get(IntUnaryOperator.class), "fn", Modifier.FINAL)
-                    .build();
+            fnParam = ParameterSpec.builder(ClassName.get(IntUnaryOperator.class), "fn", Modifier.FINAL).build();
             fnApplyName = "applyAsInt";
+        } else if (type == TypeName.LONG) {
+            fnParam = ParameterSpec.builder(ClassName.get(LongUnaryOperator.class), "fn", Modifier.FINAL).build();
+            fnApplyName = "applyAsLong";
         } else {
             throw new IllegalStateException("Single function type not implemented for " + type);
         }
         return method
                 .addParameter(fnParam)
                 .addStatement("return $T.of($L)",
-                        thisType.rawType(),
+                        tuple.name,
                         tuple.idx().mapToObj(j -> {
                             final String varName = tuple.varFields.get(j).name();
                             if (i == j) return "fn." + fnApplyName + "(" + varName + ")";
@@ -115,15 +123,23 @@ public class GenerateTuples {
             ClassName fullMapper,
             Map<TypeName, ClassName> primitiveTypeOperators
     ) {
-        public ParameterizedTypeName parameterizedPredicate(final TypeVariableName[] genericArgs) {
-            return ParameterizedTypeName.get(fullPredicate, genericArgs);
+        public TypeName parameterizedPredicate(final TypeVariableName[] genericArgs) {
+            if (genericArgs.length == 0) {
+                return fullPredicate;
+            } else {
+                return ParameterizedTypeName.get(fullPredicate, genericArgs);
+            }
         }
 
-        public ParameterizedTypeName parameterizedConsumer(final TypeVariableName[] genericArgs) {
-            return ParameterizedTypeName.get(fullConsumer, genericArgs);
+        public TypeName parameterizedConsumer(final TypeVariableName[] genericArgs) {
+            if (genericArgs.length == 0) {
+                return fullConsumer;
+            } else {
+                return ParameterizedTypeName.get(fullConsumer, genericArgs);
+            }
         }
 
-        public ParameterizedTypeName parameterizedMapper(final TypeVariableName[] genericArgs, final TypeVariableName retType) {
+        public TypeName parameterizedMapper(final TypeVariableName[] genericArgs, final TypeVariableName retType) {
             final int nArgs = genericArgs.length;
             final TypeName[] args = new TypeName[nArgs + 1];
             System.arraycopy(genericArgs, 0, args, 0, nArgs);
@@ -143,7 +159,9 @@ public class GenerateTuples {
         genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "PairType"), List.of(ClassName.OBJECT, ClassName.OBJECT)));
         genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "TrioType"), List.of(ClassName.OBJECT, ClassName.OBJECT, ClassName.OBJECT)));
         genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "QuadType"), List.of(ClassName.OBJECT, ClassName.OBJECT, ClassName.OBJECT, ClassName.OBJECT)));
-        genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "IntObjPair"), List.of(ClassName.INT, ClassName.OBJECT)));
+        genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "Indexed"), List.of(ClassName.INT, ClassName.OBJECT)));
+        genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "IntIntPair"), List.of(ClassName.INT, ClassName.INT)));
+        genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "IntLongPair"), List.of(ClassName.INT, ClassName.LONG)));
     }
 
     static void genTuple(final File packageDir, final Tuple tuple) throws IOException {
@@ -152,7 +170,12 @@ public class GenerateTuples {
 
         final TypeSpec.Builder tupleClassBuilder = TypeSpec.recordBuilder(tuple.name);
         final FunctionalInterfaces fi = getFunctionalInterfaceDefinitions(tuple, tupleClassBuilder);
-        final ParameterizedTypeName thisType = ParameterizedTypeName.get(tuple.name, tuple.genericArgs);
+        final TypeName thisType;
+        if (tuple.genericArgs.length == 0) {
+            thisType = tuple.name;
+        } else {
+            thisType = ParameterizedTypeName.get(tuple.name, tuple.genericArgs);
+        }
 
         // Define the record, its generic arguments, and fields
         tupleClassBuilder
@@ -167,9 +190,12 @@ public class GenerateTuples {
                         .addTypeVariables(Arrays.asList(tuple.genericArgs))
                         .addParameters(tuple.varFields)
                         .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-                        .addStatement("return new $L<>($L)", tuple.name.simpleName(), argList(tuple.varFields))
+                        .addStatement("return new $L$L($L)",
+                                tuple.name.simpleName(),
+                                tuple.genericArgs.length == 0 ? "" : "<>",
+                                argList(tuple.varFields))
                         .build());
-        genMatchers(tuple, tupleClassBuilder, fi, thisType);
+        genMatchers(tuple, tupleClassBuilder, fi);
         genPeekers(tuple, tupleClassBuilder, fi, thisType);
         genMappers(tuple, tupleClassBuilder, fi, thisType, zType);
 
@@ -194,9 +220,12 @@ public class GenerateTuples {
                 methodBuilder.addTypeVariable(zType);
             }
             final List<ParameterSpec> argNames = new ArrayList<>(tuple.varFields);
+            final TypeName returnType = genericTypes.length == 0
+                    ? tuple.name
+                    : ParameterizedTypeName.get(tuple.name, genericTypes);
             argNames.set(i, zField);
             methodBuilder
-                    .returns(ParameterizedTypeName.get(tuple.name, genericTypes))
+                    .returns(returnType)
                     .addParameter(ParameterSpec.builder(argType, "z").addModifiers(Modifier.FINAL).build())
                     .addModifiers(Modifier.PUBLIC)
                     .addStatement("return $T.of($L)", tuple.name, argList(argNames))
@@ -212,8 +241,7 @@ public class GenerateTuples {
     static void genMatchers(
             final Tuple tuple,
             final TypeSpec.Builder tupleClassBuilder,
-            final FunctionalInterfaces fi,
-            final ParameterizedTypeName thisType) {
+            final FunctionalInterfaces fi) {
         // Full matches
         tupleClassBuilder
                 .addMethod(MethodSpec.methodBuilder("matches")
@@ -246,7 +274,7 @@ public class GenerateTuples {
             final Tuple tuple,
             final TypeSpec.Builder tupleClassBuilder,
             final FunctionalInterfaces fi,
-            final ParameterizedTypeName thisType) {
+            final TypeName thisType) {
         // Full peek
         tupleClassBuilder.addMethod(MethodSpec.methodBuilder("peek")
                 .returns(thisType)
@@ -292,7 +320,7 @@ public class GenerateTuples {
             final Tuple tuple,
             final TypeSpec.Builder tupleClassBuilder,
             final FunctionalInterfaces fi,
-            final ParameterizedTypeName thisType,
+            final TypeName thisType,
             final TypeVariableName zType) {
         // Full map
         tupleClassBuilder.addMethod(MethodSpec.methodBuilder("map")
@@ -310,17 +338,23 @@ public class GenerateTuples {
             final ParameterSpec field = tuple.varFields.get(i);
             final TypeName typeName = field.type();
 
-            final TypeVariableName[] genericArgs = tuple.idx()
-                    .filter(j -> !tuple.types.get(j).isPrimitive())
-                    .mapToObj(j -> {
-                        if (i == j) return zType;
-                        else return tuple.varTypes.get(j);
-                    })
-                    .toArray(TypeVariableName[]::new);
+            final TypeName returnType;
+            if (thisType instanceof ParameterizedTypeName pType) {
+                final TypeVariableName[] genericArgs = tuple.idx()
+                        .filter(j -> !tuple.types.get(j).isPrimitive())
+                        .mapToObj(j -> {
+                            if (i == j) return zType;
+                            else return tuple.varTypes.get(j);
+                        })
+                        .toArray(TypeVariableName[]::new);
+                returnType = ParameterizedTypeName.get(pType.rawType(), genericArgs);
+            } else {
+                returnType = thisType;
+            }
             // Full arg list
             tupleClassBuilder.addMethod(MethodSpec.methodBuilder("map" + (i + 1))
                     .addTypeVariable(zType)
-                    .returns(ParameterizedTypeName.get(thisType.rawType(), genericArgs))
+                    .returns(returnType)
                     .addParameter(ParameterSpec.builder(
                             type.isPrimitive()
                                     ? fi.primitiveTypeOperators.get(type)
@@ -329,7 +363,7 @@ public class GenerateTuples {
                             .build())
                     .addModifiers(Modifier.PUBLIC)
                     .addStatement("return $T.of($L)",
-                            thisType.rawType(),
+                            tuple.name,
                             tuple.idx().mapToObj(j -> {
                                 final String varName = tuple.varFields.get(j).name();
                                 if (i == j) return "fn.apply(" + argList(tuple.varFields) + ")";
@@ -339,13 +373,11 @@ public class GenerateTuples {
 
             // Single arg
             tupleClassBuilder.addMethod(
-                    singleFunctionFor(i, tuple, type, typeName, thisType,
+                    singleFunctionFor(i, tuple, type, typeName,
                             MethodSpec.methodBuilder("map" + (i + 1))
                                     .addModifiers(Modifier.PUBLIC)
-                                    .returns(ParameterizedTypeName.get(thisType.rawType(), genericArgs))));
+                                    .returns(returnType)));
         });
-
-
     }
 
     static FunctionalInterfaces getFunctionalInterfaceDefinitions(final Tuple tuple, final TypeSpec.Builder tupleClassBuilder) {
@@ -397,11 +429,14 @@ public class GenerateTuples {
                         .build())
                 .build());
         final Map<TypeName, ClassName> operators = types.stream().filter(TypeName::isPrimitive).distinct().map(type -> {
-            final ClassName operator = ClassName.get(PACKAGE_NAME, tuple.name.simpleName(), tuple.name.simpleName() + "Operator");
+            final ClassName operator = ClassName.get(
+                    PACKAGE_NAME,
+                    tuple.name.simpleName(),
+                    tuple.name.simpleName() + "To" + capitalize(type.toString()) + "Operator");
             tupleClassBuilder.addType(TypeSpec.interfaceBuilder(operator)
                     .addAnnotation(FunctionalInterface.class)
                     .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-                    .addTypeVariables(mapperGenericArgs)
+                    .addTypeVariables(Arrays.asList(tuple.genericArgs))
                     .addMethod(MethodSpec.methodBuilder("apply")
                             .addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
                             .addParameters(tuple.varFields)
