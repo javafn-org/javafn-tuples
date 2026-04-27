@@ -13,6 +13,7 @@ import javax.lang.model.element.Modifier;
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
+import java.util.Map.Entry;
 import java.util.function.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -27,7 +28,7 @@ public class GenerateTuples {
         } else if (type == TypeName.INT) {
             return TypeName.get(IntPredicate.class);
         }
-        throw new IllegalStateException("Single consumer type not implemented for " + type);
+        throw new IllegalStateException("Single predicate type not implemented for " + type);
     }
     static TypeName singleConsumerFor(final TypeName type, final TypeName typeName) {
         if (!type.isPrimitive()) {
@@ -38,13 +39,41 @@ public class GenerateTuples {
         throw new IllegalStateException("Single consumer type not implemented for " + type);
     }
 
-    static TypeName singleFunctionFor(final TypeName type, final TypeName typeName, final TypeName returnType) {
+    static MethodSpec singleFunctionFor(
+            final int i,
+            final Tuple tuple,
+            final TypeName type,
+            final TypeName typeName,
+            final ParameterizedTypeName thisType,
+            final MethodSpec.Builder method) {
+        final ParameterSpec fnParam;
+        final String fnApplyName;
         if (!type.isPrimitive()) {
-            return ParameterizedTypeName.get(ClassName.get(Function.class), typeName, returnType);
+            final TypeVariableName zType = TypeVariableName.get("Z");
+            method.addTypeVariable(zType);
+            fnParam = ParameterSpec.builder(
+                    ParameterizedTypeName.get(ClassName.get(Function.class), typeName, zType),
+                    "fn", Modifier.FINAL)
+                    .build();
+            fnApplyName = "apply";
         } else if (type == TypeName.INT) {
-            return TypeName.get(IntBinaryOperator.class);
+            fnParam = ParameterSpec.builder(
+                    ClassName.get(IntUnaryOperator.class), "fn", Modifier.FINAL)
+                    .build();
+            fnApplyName = "applyAsInt";
+        } else {
+            throw new IllegalStateException("Single function type not implemented for " + type);
         }
-        throw new IllegalStateException("Single consumer type not implemented for " + type);
+        return method
+                .addParameter(fnParam)
+                .addStatement("return $T.of($L)",
+                        thisType.rawType(),
+                        tuple.idx().mapToObj(j -> {
+                            final String varName = tuple.varFields.get(j).name();
+                            if (i == j) return "fn." + fnApplyName + "(" + varName + ")";
+                            else return varName;
+                        }).collect(Collectors.joining(", ")))
+                .build();
     }
 
     record Tuple(
@@ -83,7 +112,8 @@ public class GenerateTuples {
     record FunctionalInterfaces(
             ClassName fullPredicate,
             ClassName fullConsumer,
-            ClassName fullMapper
+            ClassName fullMapper,
+            Map<TypeName, ClassName> primitiveTypeOperators
     ) {
         public ParameterizedTypeName parameterizedPredicate(final TypeVariableName[] genericArgs) {
             return ParameterizedTypeName.get(fullPredicate, genericArgs);
@@ -277,53 +307,42 @@ public class GenerateTuples {
         // Single element map
         tuple.idx().forEach(i -> {
             final TypeName type = tuple.types.get(i);
-            if (!type.isPrimitive()) {
-                final ParameterSpec field = tuple.varFields.get(i);
-                final TypeName typeName = field.type();
+            final ParameterSpec field = tuple.varFields.get(i);
+            final TypeName typeName = field.type();
 
-                final TypeVariableName[] genericArgs = tuple.idx()
-                        .filter(j -> !tuple.types.get(j).isPrimitive())
-                        .mapToObj(j -> {
-                            if (i == j) return zType;
-                            else return tuple.varTypes.get(j);
-                        })
-                        .toArray(TypeVariableName[]::new);
+            final TypeVariableName[] genericArgs = tuple.idx()
+                    .filter(j -> !tuple.types.get(j).isPrimitive())
+                    .mapToObj(j -> {
+                        if (i == j) return zType;
+                        else return tuple.varTypes.get(j);
+                    })
+                    .toArray(TypeVariableName[]::new);
+            // Full arg list
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("map" + (i + 1))
+                    .addTypeVariable(zType)
+                    .returns(ParameterizedTypeName.get(thisType.rawType(), genericArgs))
+                    .addParameter(ParameterSpec.builder(
+                            type.isPrimitive()
+                                    ? fi.primitiveTypeOperators.get(type)
+                                    : fi.parameterizedMapper(tuple.genericArgs, zType),
+                            "fn", Modifier.FINAL)
+                            .build())
+                    .addModifiers(Modifier.PUBLIC)
+                    .addStatement("return $T.of($L)",
+                            thisType.rawType(),
+                            tuple.idx().mapToObj(j -> {
+                                final String varName = tuple.varFields.get(j).name();
+                                if (i == j) return "fn.apply(" + argList(tuple.varFields) + ")";
+                                else return varName;
+                            }).collect(Collectors.joining(", ")))
+                    .build());
 
-                // Full args
-                tupleClassBuilder.addMethod(MethodSpec.methodBuilder("map" + (i + 1))
-                        .addTypeVariable(zType)
-                        .returns(ParameterizedTypeName.get(thisType.rawType(), genericArgs))
-                        .addParameter(ParameterSpec.builder(
-                                fi.parameterizedMapper(tuple.genericArgs, zType), "fn", Modifier.FINAL)
-                                .build())
-                        .addModifiers(Modifier.PUBLIC)
-                        .addStatement("return $T.of($L)",
-                                thisType.rawType(),
-                                tuple.idx().mapToObj(j -> {
-                                    final String varName = tuple.varFields.get(j).name();
-                                    if (i == j) return "fn.apply(" + argList(tuple.varFields) + ")";
-                                    else return varName;
-                                }).collect(Collectors.joining(", ")))
-                        .build());
-                // Single arg
-                tupleClassBuilder.addMethod(MethodSpec.methodBuilder("map" + (i + 1))
-                        .addTypeVariable(zType)
-                        .returns(ParameterizedTypeName.get(thisType.rawType(), genericArgs))
-                        .addParameter(ParameterSpec.builder(
-                                singleFunctionFor(type, typeName, zType), "fn", Modifier.FINAL)
-                                .build())
-                        .addModifiers(Modifier.PUBLIC)
-                        .addStatement("return $T.of($L)",
-                                thisType.rawType(),
-                                tuple.idx().mapToObj(j -> {
-                                    final String varName = tuple.varFields.get(j).name();
-                                    if (i == j) return "fn.apply(" + varName + ")";
-                                    else return varName;
-                                }).collect(Collectors.joining(", ")))
-                        .build());
-            } else {
-                // TODO
-            }
+            // Single arg
+            tupleClassBuilder.addMethod(
+                    singleFunctionFor(i, tuple, type, typeName, thisType,
+                            MethodSpec.methodBuilder("map" + (i + 1))
+                                    .addModifiers(Modifier.PUBLIC)
+                                    .returns(ParameterizedTypeName.get(thisType.rawType(), genericArgs))));
         });
 
 
@@ -337,7 +356,9 @@ public class GenerateTuples {
         }
         if (nTypes == 2 && types.stream().allMatch(t -> Objects.equals(t, ClassName.OBJECT))) {
             // This is a pair; let's reuse the Bi* interfaces
-            return new FunctionalInterfaces(ClassName.get(BiPredicate.class), ClassName.get(BiConsumer.class), ClassName.get(BiFunction.class));
+            return new FunctionalInterfaces(
+                    ClassName.get(BiPredicate.class), ClassName.get(BiConsumer.class),
+                    ClassName.get(BiFunction.class), Map.of());
         }
         final ClassName predicate = ClassName.get(PACKAGE_NAME, tuple.name.simpleName(), tuple.name.simpleName() + "Predicate");
         final ClassName consumer = ClassName.get(PACKAGE_NAME, tuple.name.simpleName(), tuple.name.simpleName() + "Consumer");
@@ -375,8 +396,22 @@ public class GenerateTuples {
                         .returns(mapReturnType)
                         .build())
                 .build());
+        final Map<TypeName, ClassName> operators = types.stream().filter(TypeName::isPrimitive).distinct().map(type -> {
+            final ClassName operator = ClassName.get(PACKAGE_NAME, tuple.name.simpleName(), tuple.name.simpleName() + "Operator");
+            tupleClassBuilder.addType(TypeSpec.interfaceBuilder(operator)
+                    .addAnnotation(FunctionalInterface.class)
+                    .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                    .addTypeVariables(mapperGenericArgs)
+                    .addMethod(MethodSpec.methodBuilder("apply")
+                            .addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+                            .addParameters(tuple.varFields)
+                            .returns(type)
+                            .build())
+                    .build());
+            return Map.entry(type, operator);
+        }).collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
-        return new FunctionalInterfaces(predicate, consumer, mapper);
+        return new FunctionalInterfaces(predicate, consumer, mapper, operators);
     }
 
     static String argList(final List<ParameterSpec> varFields) {
