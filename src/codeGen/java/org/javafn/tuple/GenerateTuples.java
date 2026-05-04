@@ -12,9 +12,25 @@ import com.palantir.javapoet.TypeVariableName;
 import javax.lang.model.element.Modifier;
 import java.io.File;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Map.Entry;
-import java.util.function.*;
+import java.util.Objects;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.IntConsumer;
+import java.util.function.IntPredicate;
+import java.util.function.IntUnaryOperator;
+import java.util.function.LongConsumer;
+import java.util.function.LongPredicate;
+import java.util.function.LongUnaryOperator;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -47,7 +63,7 @@ public class GenerateTuples {
         throw new IllegalStateException("Single consumer type not implemented for " + type);
     }
 
-    static MethodSpec singleFunctionFor(
+    static MethodSpec singleArgMapperFor(
             final int i,
             final Tuple tuple,
             final TypeName type,
@@ -84,6 +100,20 @@ public class GenerateTuples {
                 .build();
     }
 
+//    static MethodSpec singleArgToObjMapper(
+//            final int i,
+//            final Tuple tuple,
+//            final TypeName type,
+//            final TypeName typeName,
+//            final MethodSpec.Builder method) {
+//
+//        if (type == TypeName.INT) {
+//
+//        }
+//
+//        return method.build();
+//    }
+
     record Tuple(
             ClassName name,
             List<TypeName> types,
@@ -112,6 +142,8 @@ public class GenerateTuples {
             return new Tuple(name, types, varTypes, varFields, genericArgs);
         }
 
+        public boolean isFullyPrimitive() { return genericArgs.length == 0; }
+
         public IntStream idx() {
             return IntStream.range(0, types.size());
         }
@@ -139,6 +171,14 @@ public class GenerateTuples {
             }
         }
 
+        public TypeName parameterizedMapper(final TypeVariableName[] genericArgs) {
+            if (genericArgs.length == 0) {
+                return fullMapper;
+            } else {
+                return ParameterizedTypeName.get(fullMapper, genericArgs);
+            }
+        }
+
         public TypeName parameterizedMapper(final TypeVariableName[] genericArgs, final TypeVariableName retType) {
             final int nArgs = genericArgs.length;
             final TypeName[] args = new TypeName[nArgs + 1];
@@ -159,8 +199,9 @@ public class GenerateTuples {
         genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "PairType"), List.of(ClassName.OBJECT, ClassName.OBJECT)));
         genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "TrioType"), List.of(ClassName.OBJECT, ClassName.OBJECT, ClassName.OBJECT)));
         genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "QuadType"), List.of(ClassName.OBJECT, ClassName.OBJECT, ClassName.OBJECT, ClassName.OBJECT)));
-        genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "Indexed"), List.of(ClassName.INT, ClassName.OBJECT)));
+        genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "Index"), List.of(ClassName.INT, ClassName.OBJECT)));
         genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "IntIntPair"), List.of(ClassName.INT, ClassName.INT)));
+        genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "IntObjObjTrio"), List.of(ClassName.INT, ClassName.OBJECT, ClassName.OBJECT)));
         genTuple(out, Tuple.of(ClassName.get(PACKAGE_NAME, "IntLongPair"), List.of(ClassName.INT, ClassName.LONG)));
     }
 
@@ -168,10 +209,11 @@ public class GenerateTuples {
         final TypeVariableName zType = TypeVariableName.get("Z");
         final ParameterSpec zField = ParameterSpec.builder(zType, "z").build();
 
-        final TypeSpec.Builder tupleClassBuilder = TypeSpec.recordBuilder(tuple.name);
+        final TypeSpec.Builder tupleClassBuilder = TypeSpec.recordBuilder(tuple.name)
+                .addModifiers(Modifier.PUBLIC);
         final FunctionalInterfaces fi = getFunctionalInterfaceDefinitions(tuple, tupleClassBuilder);
         final TypeName thisType;
-        if (tuple.genericArgs.length == 0) {
+        if (tuple.isFullyPrimitive()) {
             thisType = tuple.name;
         } else {
             thisType = ParameterizedTypeName.get(tuple.name, tuple.genericArgs);
@@ -192,7 +234,7 @@ public class GenerateTuples {
                         .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
                         .addStatement("return new $L$L($L)",
                                 tuple.name.simpleName(),
-                                tuple.genericArgs.length == 0 ? "" : "<>",
+                                tuple.isFullyPrimitive() ? "" : "<>",
                                 argList(tuple.varFields))
                         .build());
         genMatchers(tuple, tupleClassBuilder, fi);
@@ -233,9 +275,28 @@ public class GenerateTuples {
             tupleClassBuilder.addMethod(methodBuilder.build());
         });
 
+        customize(tupleClassBuilder, tuple);
+
         JavaFile.builder(PACKAGE_NAME, tupleClassBuilder.build())
                 .build()
                 .writeTo(packageDir);
+    }
+
+    static void customize(final TypeSpec.Builder tupleClassBuilder, final Tuple tuple) {
+        if (tuple.types.size() == 2 && tuple.types.stream().allMatch(t -> Objects.equals(t, ClassName.OBJECT))) {
+            // Tuple type
+            final TypeVariableName[] genericArgs = new TypeVariableName[]{
+                    TypeVariableName.get("KEY"),
+                    TypeVariableName.get("VAL")};
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("from")
+                    .addTypeVariables(Arrays.asList(genericArgs))
+                    .addParameter(ParameterSpec.builder(
+                            ParameterizedTypeName.get(ClassName.get(Entry.class), genericArgs),
+                            "e", Modifier.FINAL).build())
+                    .returns(ParameterizedTypeName.get(tuple.name, genericArgs))
+                            .addStatement("return new $T<>(e.getKey(), e.getValue())", tuple.name)
+                    .build());
+        }
     }
 
     static void genMatchers(
@@ -352,15 +413,18 @@ public class GenerateTuples {
                 returnType = thisType;
             }
             // Full arg list
+            final ParameterSpec fullMapperArg = ParameterSpec.builder(
+                            tuple.isFullyPrimitive()
+                                    ? fi.primitiveTypeOperators().get(type)
+                                    : type.isPrimitive()
+                                      ? ParameterizedTypeName.get(fi.primitiveTypeOperators.get(type), tuple.genericArgs)
+                                      : fi.parameterizedMapper(tuple.genericArgs, zType),
+                            "fn", Modifier.FINAL)
+                    .build();
             tupleClassBuilder.addMethod(MethodSpec.methodBuilder("map" + (i + 1))
                     .addTypeVariable(zType)
                     .returns(returnType)
-                    .addParameter(ParameterSpec.builder(
-                            type.isPrimitive()
-                                    ? fi.primitiveTypeOperators.get(type)
-                                    : fi.parameterizedMapper(tuple.genericArgs, zType),
-                            "fn", Modifier.FINAL)
-                            .build())
+                    .addParameter(fullMapperArg)
                     .addModifiers(Modifier.PUBLIC)
                     .addStatement("return $T.of($L)",
                             tuple.name,
@@ -373,10 +437,19 @@ public class GenerateTuples {
 
             // Single arg
             tupleClassBuilder.addMethod(
-                    singleFunctionFor(i, tuple, type, typeName,
+                    singleArgMapperFor(i, tuple, type, typeName,
                             MethodSpec.methodBuilder("map" + (i + 1))
                                     .addModifiers(Modifier.PUBLIC)
                                     .returns(returnType)));
+
+//            if (type.isPrimitive()) {
+//                // ToObj Mapper
+//                tupleClassBuilder.addMethod(
+//                        singleArgMapperFor(i, tuple, type, typeName,
+//                                MethodSpec.methodBuilder("map" + (i + 1) + "ToObj")
+//                                        .addModifiers(Modifier.PUBLIC)
+//                                        .returns(returnType)));
+//            }
         });
     }
 
