@@ -17,10 +17,12 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static java.util.function.Predicate.not;
 import static org.javafn.tupleGen.Util.MAP_RETURN_TYPE;
 
 public record Tuple(
 		ClassName name,
+		ClassName helperName,
 		TypeName nameWithGenerics,
 		List<TupleEntry> entries,
 		List<TypeVariableName> entryTypes,
@@ -28,9 +30,9 @@ public record Tuple(
 		TypeVariableName[] genericArgs
 ) {
 	static final Map<String, String> NAME_OVERRIDES = Map.of(
-			"ObjObjTuple", "PairType",
-			"ObjObjObjTuple", "TrioType",
-			"ObjObjObjObjTuple", "QuadType",
+			"ObjObjTuple", "Pair",
+			"ObjObjObjTuple", "Trio",
+			"ObjObjObjObjTuple", "Quad",
 			"IntObjTuple", "Index");
 
 	static List<TupleEntry> toEntries(final List<TypeName> types) {
@@ -55,11 +57,14 @@ public record Tuple(
 
 	public static Tuple of(final List<TupleEntry> entries, final String _name) {
 		final ClassName name = ClassName.get(GenerateTuples.PACKAGE_NAME, _name);
+		final ClassName helperName = "Index".equals(name.simpleName())
+				? ClassName.get(GenerateTuples.PACKAGE_NAME, "Indexed")
+				: ClassName.get(GenerateTuples.PACKAGE_NAME, _name + "s");
 		final TypeVariableName[] genericArgs = entries.stream()
 				.filter(t -> t instanceof ObjectType)
 				.map(TupleEntry::varTypeName)
 				.toArray(TypeVariableName[]::new);
-		return new Tuple(name,
+		return new Tuple(name, helperName,
 				genericArgs.length == 0 ? name : ParameterizedTypeName.get(name, genericArgs),
 				entries,
 				entries.stream().map(TupleEntry::varTypeName).toList(),
@@ -111,21 +116,7 @@ public record Tuple(
 				.addStatement("return fn.test($L)", argList(entryFields))
 				.build());
 		// Single argument matches
-		idx().forEach(i -> {
-			final TupleEntry entry = entries.get(i);
-			final ParameterSpec field = entryFields.get(i);
-			ms.add(MethodSpec.methodBuilder("matches" + (i + 1))
-					.returns(ClassName.BOOLEAN)
-					.addParameter(ParameterSpec.builder(
-									entry.predicate(),
-									"fn",
-									Modifier.FINAL)
-							.build())
-					.addModifiers(Modifier.PUBLIC)
-					.addStatement("$T.requireNonNull(fn)", Objects.class)
-					.addStatement("return fn.test($L)", field.name())
-					.build());
-		});
+		idx().forEach(i -> ms.add(entries.get(i).genPredicate(entryFields.get(i))));
 		return ms;
 	}
 
@@ -157,21 +148,7 @@ public record Tuple(
 				.addStatement("fn.accept($L)", argList(entryFields))
 				.build());
 		// Single arg peek
-		idx().forEach(i -> {
-			final TupleEntry entry = entries.get(i);
-			final ParameterSpec field = entryFields.get(i);
-			ms.add(MethodSpec.methodBuilder("peek" + (i+1))
-					.returns(nameWithGenerics)
-					.addParameter(ParameterSpec.builder(entry.consumer(),
-									"fn",
-									Modifier.FINAL)
-							.build())
-					.addModifiers(Modifier.PUBLIC)
-					.addStatement("$T.requireNonNull(fn)", Objects.class)
-					.addStatement("fn.accept($L)", field.name())
-					.addStatement("return this")
-					.build());
-		});
+		idx().forEach(i -> ms.add(entries.get(i).genConsumer(this, entryFields.get(i))));
 		return ms;
 	}
 
@@ -231,14 +208,11 @@ public record Tuple(
 			// Single arg
 			ms.add(entry.genSingleArgMapper(this, returnType));
 
-//            if (type.isPrimitive()) {
-//                // ToObj Mapper
-//                tupleClassBuilder.addMethod(
-//                        singleArgMapperFor(index, tuple, type, typeName,
-//                                MethodSpec.methodBuilder("map" + (index + 1) + "ToObj")
-//                                        .addModifiers(Modifier.PUBLIC)
-//                                        .returns(returnType)));
-//            }
+            if (i < 2) {
+				GenerateTuples.SUPPORTED_TYPES.keySet().stream()
+						.filter(not(t -> entry.type().equals(t)))
+						.forEach(toType -> ms.add(entry.genSingleArgMapperTo(this, toType)));
+            }
 		});
 		return ms;
 	}

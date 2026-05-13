@@ -13,20 +13,22 @@ import org.javafn.utils.Data;
 import javax.lang.model.element.Modifier;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class GenerateTuples {
 
     public static final String PACKAGE_NAME = "org.javafn.tuples";
 
-    public static final List<TypeName> DISTINCT_TYPES = List.of(
-            ClassName.OBJECT, ClassName.INT, ClassName.LONG, ClassName.DOUBLE);
+    public static final Map<TypeName, String> SUPPORTED_TYPES = Map.of(
+            ClassName.OBJECT, "Obj",
+            ClassName.INT, "Int",
+            ClassName.LONG, "Long",
+            ClassName.DOUBLE, "Double");
 
     public static void main(String[] args) throws IOException {
         final File out = new File("build/generated/main/java");
@@ -36,9 +38,9 @@ public class GenerateTuples {
             }
         }
 
-        final List<List<TypeName>> tuples2 = DISTINCT_TYPES.stream()
+        final List<List<TypeName>> tuples2 = SUPPORTED_TYPES.keySet().stream()
                 .map(List::of)
-                .flatMap(l -> DISTINCT_TYPES.stream()
+                .flatMap(l -> SUPPORTED_TYPES.keySet().stream()
                         .map(r -> Data.append(l, r)))
                 .toList();
         final List<List<TypeName>> tuples3 = tuples2.stream()
@@ -77,6 +79,18 @@ public class GenerateTuples {
                         .map(e -> e.genSetter(tuple))
                 .toList());
 
+        final TypeSpec.Builder tupleHelperBuilder = TypeSpec.classBuilder(tuple.helperName())
+                .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
+                .addMethod(MethodSpec.constructorBuilder()
+                        .addStatement("throw new $T(\"This is a static helper class and should never be instantiated.\")", IllegalStateException.class)
+                        .build())
+                .addMethods(tuple.genPredicates(fi))
+                .addMethods(tuple.genConsumers(fi))
+                .addMethods(tuple.genMappers(fi))
+                .addMethods(tuple.entries().stream()
+                        .map(e -> e.genSetter(tuple))
+                        .toList());
+
         customize(tupleClassBuilder, tuple);
 
         JavaFile.builder(PACKAGE_NAME, tupleClassBuilder.build())
@@ -85,7 +99,7 @@ public class GenerateTuples {
     }
 
     static void customize(final TypeSpec.Builder tupleClassBuilder, final Tuple tuple) {
-        if ("PairType".equals(tuple.name().simpleName())) {
+        if ("Pair".equals(tuple.name().simpleName())) {
             // Pair type
             final TypeVariableName[] genericArgs = new TypeVariableName[]{
                     TypeVariableName.get("KEY"),

@@ -6,6 +6,7 @@ import com.palantir.javapoet.ParameterSpec;
 import com.palantir.javapoet.ParameterizedTypeName;
 import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeVariableName;
+import org.javafn.tupleGen.Util.MapperType;
 
 import javax.lang.model.element.Modifier;
 import java.util.ArrayList;
@@ -14,33 +15,24 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
 import java.util.function.DoublePredicate;
-import java.util.function.DoubleToIntFunction;
-import java.util.function.DoubleToLongFunction;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.Function;
 import java.util.function.IntConsumer;
-import java.util.function.IntFunction;
 import java.util.function.IntPredicate;
-import java.util.function.IntToDoubleFunction;
-import java.util.function.IntToLongFunction;
 import java.util.function.IntUnaryOperator;
 import java.util.function.LongConsumer;
-import java.util.function.LongFunction;
 import java.util.function.LongPredicate;
-import java.util.function.LongToDoubleFunction;
-import java.util.function.LongToIntFunction;
 import java.util.function.LongUnaryOperator;
 import java.util.function.Predicate;
-import java.util.function.ToDoubleFunction;
-import java.util.function.ToIntFunction;
-import java.util.function.ToLongFunction;
 import java.util.stream.Collectors;
 
+import static org.javafn.tupleGen.GenerateTuples.SUPPORTED_TYPES;
 import static org.javafn.tupleGen.Util.DOUBLE_ARG_FIELD;
 import static org.javafn.tupleGen.Util.INT_ARG_FIELD;
 import static org.javafn.tupleGen.Util.LONG_ARG_FIELD;
 import static org.javafn.tupleGen.Util.MAP_RETURN_FIELD;
 import static org.javafn.tupleGen.Util.MAP_RETURN_TYPE;
+import static org.javafn.tupleGen.Util.TYPE_MAPPERS;
 
 public interface TupleEntry {
 	int index();
@@ -49,15 +41,41 @@ public interface TupleEntry {
 	default boolean isObj() { return false; }
 	TypeVariableName varTypeName();
 	ParameterSpec paramSpec(Modifier... modifiers);
-	TypeName predicate();
-	TypeName consumer();
+	TypeName predicateName();
+	TypeName consumerName();
 	TypeName mapper(ClassName toType);
 	MethodSpec genSetter(Tuple tuple);
-	default MethodSpec genFullArgListMapper(Tuple tuple, TypeName returnType, ParameterSpec fullMapperArg) {
+	default MethodSpec genPredicate(final ParameterSpec field) {
+		return MethodSpec.methodBuilder("matches" + (index() + 1))
+				.returns(ClassName.BOOLEAN)
+				.addParameter(ParameterSpec.builder(
+								predicateName(),
+								"fn",
+								Modifier.FINAL)
+						.build())
+				.addModifiers(Modifier.PUBLIC)
+				.addStatement("$T.requireNonNull(fn)", Objects.class)
+				.addStatement("return fn.test($L)", field.name())
+				.build();
+	}
+	default MethodSpec genConsumer(Tuple tuple, ParameterSpec field) {
+		return MethodSpec.methodBuilder("peek" + (index() + 1))
+				.returns(tuple.nameWithGenerics())
+				.addParameter(ParameterSpec.builder(consumerName(),
+								"fn",
+								Modifier.FINAL)
+						.build())
+				.addModifiers(Modifier.PUBLIC)
+				.addStatement("$T.requireNonNull(fn)", Objects.class)
+				.addStatement("fn.accept($L)", field.name())
+				.addStatement("return this")
+				.build();
+	}
+	default MethodSpec genFullArgListMapper(Tuple tuple, TypeName returnType, ParameterSpec fullArgList) {
 		return MethodSpec.methodBuilder("map" + (index() + 1))
 				.addTypeVariable(MAP_RETURN_TYPE)
 				.returns(returnType)
-				.addParameter(fullMapperArg)
+				.addParameter(fullArgList)
 				.addModifiers(Modifier.PUBLIC)
 				.addStatement("$T.requireNonNull(fn)", Objects.class)
 				.addStatement("return $T.of($L)",
@@ -70,6 +88,7 @@ public interface TupleEntry {
 				.build();
 	}
 	MethodSpec genSingleArgMapper(Tuple tuple, TypeName returnType);
+	MethodSpec genSingleArgMapperTo(Tuple tuple, TypeName toType);
 
 	static TupleEntry of(final TypeName type, final int i) {
 		if (type.equals(ClassName.OBJECT)) {
@@ -89,31 +108,25 @@ public interface TupleEntry {
 
 		@Override public String typeName() { return "Obj"; }
 		@Override public TypeName type() {
-			return varTypeName;
+			return ClassName.OBJECT;
 		}
 		@Override public boolean isObj() { return true; }
 		@Override public ParameterSpec paramSpec(final Modifier... modifiers) {
 			return ParameterSpec.builder(varTypeName, "v" + (index +1), modifiers).build();
 		}
-		@Override public TypeName predicate() {
+		@Override public TypeName predicateName() {
 			return ParameterizedTypeName.get(ClassName.get(Predicate.class), varTypeName);
 		}
-		@Override public TypeName consumer() {
+		@Override public TypeName consumerName() {
 			return ParameterizedTypeName.get(ClassName.get(Consumer.class), varTypeName);
 		}
 		@Override public TypeName mapper(final ClassName toType) {
+			final var mapper = TYPE_MAPPERS.get(ClassName.OBJECT).get(toType);
+			if (mapper == null) throw new IllegalArgumentException("Unexpected type " + toType);
 			if (toType.isPrimitive()) {
-				if (toType.equals(TypeName.INT)) {
-					return ParameterizedTypeName.get(ClassName.get(ToIntFunction.class), varTypeName);
-				} else if (toType.equals(TypeName.LONG)) {
-					return ParameterizedTypeName.get(ClassName.get(ToLongFunction.class), varTypeName);
-				} else if (toType.equals(TypeName.DOUBLE)) {
-					return ParameterizedTypeName.get(ClassName.get(ToDoubleFunction.class), varTypeName);
-				} else {
-					throw new IllegalArgumentException("Unexpected type " + toType);
-				}
+				return mapper.fn();
 			} else {
-				return ParameterizedTypeName.get(ClassName.get(Function.class), varTypeName, toType);
+				return ParameterizedTypeName.get(mapper.fn(), varTypeName, toType);
 			}
 		}
 		@Override public MethodSpec genSetter(final Tuple tuple) {
@@ -136,11 +149,11 @@ public interface TupleEntry {
 					.build();
 			return methodBuilder.build();
 		}
-		@Override public MethodSpec genFullArgListMapper(final Tuple tuple, final TypeName returnType, final ParameterSpec fullMapperArg) {
+		@Override public MethodSpec genFullArgListMapper(final Tuple tuple, final TypeName returnType, final ParameterSpec fullArgList) {
 			return MethodSpec.methodBuilder("map" + (index + 1))
 					.addTypeVariable(MAP_RETURN_TYPE)
 					.returns(returnType)
-					.addParameter(fullMapperArg)
+					.addParameter(fullArgList)
 					.addModifiers(Modifier.PUBLIC)
 					.addStatement("$T.requireNonNull(fn)", Objects.class)
 					.addStatement("return $T.of($L)",
@@ -157,7 +170,7 @@ public interface TupleEntry {
 					.addTypeVariable(MAP_RETURN_TYPE)
 					.returns(returnType)
 					.addParameter(ParameterSpec.builder(
-							ParameterizedTypeName.get(ClassName.get(Function.class), type(), MAP_RETURN_TYPE),
+							ParameterizedTypeName.get(ClassName.get(Function.class), varTypeName(), MAP_RETURN_TYPE),
 							"fn", Modifier.FINAL)
 							.build())
 					.addStatement("$T.requireNonNull(fn)", Objects.class)
@@ -170,6 +183,9 @@ public interface TupleEntry {
 							}).collect(Collectors.joining(", ")))
 					.build();
 		}
+		@Override public MethodSpec genSingleArgMapperTo(final Tuple tuple, final TypeName toType) {
+			return TupleEntry.genPrimitiveSingleArgMapper(tuple, index, ClassName.OBJECT, toType);
+		}
 	}
 
 	record IntType(int index) implements TupleEntry {
@@ -180,21 +196,15 @@ public interface TupleEntry {
 		@Override public ParameterSpec paramSpec(final Modifier... modifiers) {
 			return ParameterSpec.builder(TypeName.INT, "v" + (index + 1), modifiers).build();
 		}
-		@Override public TypeName predicate() { return TypeName.get(IntPredicate.class); }
-		@Override public TypeName consumer() { return TypeName.get(IntConsumer.class); }
+		@Override public TypeName predicateName() { return TypeName.get(IntPredicate.class); }
+		@Override public TypeName consumerName() { return TypeName.get(IntConsumer.class); }
 		@Override public TypeName mapper(final ClassName toType) {
+			final MapperType mapper = TYPE_MAPPERS.get(ClassName.INT).get(toType);
+			if (mapper == null) throw new IllegalArgumentException("Unexpected type " + toType);
 			if (toType.isPrimitive()) {
-				if (toType.equals(TypeName.INT)) {
-					return TypeName.get(IntUnaryOperator.class);
-				} else if (toType.equals(TypeName.LONG)) {
-					return TypeName.get(IntToLongFunction.class);
-				} else if (toType.equals(TypeName.DOUBLE)) {
-					return TypeName.get(IntToDoubleFunction.class);
-				} else {
-					throw new IllegalArgumentException("Unexpected type " + toType);
-				}
+				return mapper.fn();
 			} else {
-				return ParameterizedTypeName.get(ClassName.get(IntFunction.class), toType);
+				return ParameterizedTypeName.get(mapper.fn(), toType);
 			}
 		}
 		@Override public MethodSpec genSetter(final Tuple tuple) {
@@ -202,6 +212,9 @@ public interface TupleEntry {
 		}
 		@Override public MethodSpec genSingleArgMapper(final Tuple tuple, final TypeName returnType) {
 			return TupleEntry.genPrimitiveMapper(tuple, index, IntUnaryOperator.class, returnType, "applyAsInt");
+		}
+		@Override public MethodSpec genSingleArgMapperTo(final Tuple tuple, final TypeName toType) {
+			return TupleEntry.genPrimitiveSingleArgMapper(tuple, index, TypeName.INT, toType);
 		}
 	}
 
@@ -212,21 +225,15 @@ public interface TupleEntry {
 		@Override public ParameterSpec paramSpec(final Modifier... modifiers) {
 			return ParameterSpec.builder(TypeName.LONG, "v" + (index + 1), modifiers).build();
 		}
-		@Override public TypeName predicate() { return TypeName.get(LongPredicate.class); }
-		@Override public TypeName consumer() { return TypeName.get(LongConsumer.class); }
+		@Override public TypeName predicateName() { return TypeName.get(LongPredicate.class); }
+		@Override public TypeName consumerName() { return TypeName.get(LongConsumer.class); }
 		@Override public TypeName mapper(final ClassName toType) {
+			final MapperType mapper = TYPE_MAPPERS.get(ClassName.LONG).get(toType);
+			if (mapper == null) throw new IllegalArgumentException("Unexpected type " + toType);
 			if (toType.isPrimitive()) {
-				if (toType.equals(TypeName.INT)) {
-					return TypeName.get(LongToIntFunction.class);
-				} else if (toType.equals(TypeName.LONG)) {
-					return TypeName.get(LongUnaryOperator.class);
-				} else if (toType.equals(TypeName.DOUBLE)) {
-					return TypeName.get(LongToDoubleFunction.class);
-				} else {
-					throw new IllegalArgumentException("Unexpected type " + toType);
-				}
+				return mapper.fn();
 			} else {
-				return ParameterizedTypeName.get(ClassName.get(LongFunction.class), toType);
+				return ParameterizedTypeName.get(mapper.fn(), toType);
 			}
 		}
 		@Override public MethodSpec genSetter(final Tuple tuple) {
@@ -235,6 +242,9 @@ public interface TupleEntry {
 
 		@Override public MethodSpec genSingleArgMapper(final Tuple tuple, final TypeName returnType) {
 			return TupleEntry.genPrimitiveMapper(tuple, index, LongUnaryOperator.class, returnType, "applyAsLong");
+		}
+		@Override public MethodSpec genSingleArgMapperTo(final Tuple tuple, final TypeName toType) {
+			return TupleEntry.genPrimitiveSingleArgMapper(tuple, index, ClassName.LONG, toType);
 		}
 	}
 
@@ -245,21 +255,15 @@ public interface TupleEntry {
 		@Override public ParameterSpec paramSpec(final Modifier... modifiers) {
 			return ParameterSpec.builder(TypeName.DOUBLE, "v" + (index + 1), modifiers).build();
 		}
-		@Override public TypeName predicate() { return TypeName.get(DoublePredicate.class); }
-		@Override public TypeName consumer() { return TypeName.get(DoubleConsumer.class); }
+		@Override public TypeName predicateName() { return TypeName.get(DoublePredicate.class); }
+		@Override public TypeName consumerName() { return TypeName.get(DoubleConsumer.class); }
 		@Override public TypeName mapper(final ClassName toType) {
+			final MapperType mapper = TYPE_MAPPERS.get(ClassName.DOUBLE).get(toType);
+			if (mapper == null) throw new IllegalArgumentException("Unexpected type " + toType);
 			if (toType.isPrimitive()) {
-				if (toType.equals(TypeName.INT)) {
-					return TypeName.get(DoubleToIntFunction.class);
-				} else if (toType.equals(TypeName.LONG)) {
-					return TypeName.get(DoubleToLongFunction.class);
-				} else if (toType.equals(TypeName.DOUBLE)) {
-					return TypeName.get(DoubleUnaryOperator.class);
-				} else {
-					throw new IllegalArgumentException("Unexpected type " + toType);
-				}
+				return mapper.fn();
 			} else {
-				return ParameterizedTypeName.get(ClassName.get(LongFunction.class), toType);
+				return ParameterizedTypeName.get(mapper.fn(), toType);
 			}
 		}
 		@Override public MethodSpec genSetter(final Tuple tuple) {
@@ -267,6 +271,9 @@ public interface TupleEntry {
 		}
 		@Override public MethodSpec genSingleArgMapper(final Tuple tuple, final TypeName returnType) {
 			return TupleEntry.genPrimitiveMapper(tuple, index, DoubleUnaryOperator.class, returnType, "applyAsDouble");
+		}
+		@Override public MethodSpec genSingleArgMapperTo(final Tuple tuple, final TypeName toType) {
+			return TupleEntry.genPrimitiveSingleArgMapper(tuple, index, ClassName.DOUBLE, toType);
 		}
 	}
 
@@ -304,6 +311,47 @@ public interface TupleEntry {
 						tuple.idx().mapToObj(j -> {
 							final String varName = tuple.entryFields().get(j).name();
 							if (index == j) return "fn." + applyFnName + "(" + varName + ")";
+							else return varName;
+						}).collect(Collectors.joining(", ")))
+				.build();
+	}
+
+	private static MethodSpec genPrimitiveSingleArgMapper(
+			final Tuple tuple, final int index, final TypeName fromType, final TypeName toType) {
+		if (fromType.equals(toType)) throw new IllegalArgumentException();
+
+		final Tuple newTuple;
+		{
+			final ArrayList<TypeName> newTupleTypes = new ArrayList<>(tuple.entries().stream().map(TupleEntry::type).toList());
+			newTupleTypes.set(index, toType);
+			newTuple = Tuple.of(newTupleTypes);
+		}
+		final MapperType mapper = TYPE_MAPPERS.get(fromType).get(toType);
+		if (mapper == null) throw new IllegalArgumentException("Unexpected type " + toType);
+
+		final TypeName paramType;
+		final List<TypeVariableName> newGenericTypes;
+		if (ClassName.OBJECT.equals(fromType)) {
+			newGenericTypes = List.of();
+			paramType = ParameterizedTypeName.get(mapper.fn(), tuple.entries().get(index).varTypeName());
+		} else if (ClassName.OBJECT.equals(toType)) {
+			newGenericTypes = List.of(newTuple.entries().get(index).varTypeName());
+			paramType = ParameterizedTypeName.get(mapper.fn(), newGenericTypes.toArray(TypeName[]::new));
+		} else {
+			newGenericTypes = List.of();
+			paramType = mapper.fn();
+		}
+
+		return MethodSpec.methodBuilder("map" + (index + 1) + "To" + SUPPORTED_TYPES.get(toType))
+				.addTypeVariables(newGenericTypes)
+				.returns(newTuple.nameWithGenerics())
+				.addParameter(ParameterSpec.builder(paramType, "fn", Modifier.FINAL).build())
+				.addStatement("$T.requireNonNull(fn)", Objects.class)
+				.addStatement("return $T.of($L)",
+						newTuple.name(),
+						tuple.idx().mapToObj(j -> {
+							final String varName = tuple.entryFields().get(j).name();
+							if (index == j) return "fn.%s(%s)".formatted(mapper.applyName(), varName);
 							else return varName;
 						}).collect(Collectors.joining(", ")))
 				.build();
