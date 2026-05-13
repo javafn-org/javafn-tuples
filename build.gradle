@@ -38,7 +38,7 @@ tasks.register('genSrc', JavaExec) {
 	group = 'code generation'
 	description = 'Generates source'
 	classpath = sourceSets.codeGen.runtimeClasspath
-	mainClass = 'org.javafn.tuple.GenerateTuples'
+	mainClass = 'org.javafn.tupleGen.GenerateTuples'
 	outputs.dir generatedMainJava
 }
 

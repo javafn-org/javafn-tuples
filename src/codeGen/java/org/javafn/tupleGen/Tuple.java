@@ -1,4 +1,4 @@
-package org.javafn.tuple;
+package org.javafn.tupleGen;
 
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.MethodSpec;
@@ -6,7 +6,7 @@ import com.palantir.javapoet.ParameterSpec;
 import com.palantir.javapoet.ParameterizedTypeName;
 import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeVariableName;
-import org.javafn.tuple.TupleEntry.ObjectType;
+import org.javafn.tupleGen.TupleEntry.ObjectType;
 
 import javax.lang.model.element.Modifier;
 import java.util.ArrayList;
@@ -14,6 +14,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+
+import static org.javafn.tupleGen.Util.MAP_RETURN_TYPE;
 
 public record Tuple(
 		ClassName name,
@@ -160,6 +162,83 @@ public record Tuple(
 					.addStatement("fn.accept($L)", field.name())
 					.addStatement("return this")
 					.build());
+		});
+		return ms;
+	}
+
+	public List<MethodSpec> genMappers(final FunctionalInterfaces fi) {
+		final List<MethodSpec> ms = new ArrayList<>(entries.size() + 1);
+		// Full map
+		ms.add(MethodSpec.methodBuilder("map")
+				.addTypeVariable(MAP_RETURN_TYPE)
+				.returns(MAP_RETURN_TYPE)
+				.addParameter(ParameterSpec.builder(
+								fi.parameterizedMapper(genericArgs, MAP_RETURN_TYPE),
+								"fn",
+								Modifier.FINAL)
+						.build())
+				.addModifiers(Modifier.PUBLIC)
+				.addStatement("return fn.apply($L)", argList(entryFields))
+				.build());
+		// Single element map, full args and single args
+		idx().forEach(i -> {
+			final TupleEntry entry = entries.get(i);
+			final ParameterSpec field = entryFields.get(i);
+
+			final TypeName returnType;
+			if (nameWithGenerics instanceof ParameterizedTypeName pType) {
+				final TypeVariableName[] genericArgs = idx()
+						.filter(j -> entries.get(j).isObj())
+						.mapToObj(j -> {
+							if (i == j) return MAP_RETURN_TYPE;
+							else return entryTypes.get(j);
+						})
+						.toArray(TypeVariableName[]::new);
+				returnType = ParameterizedTypeName.get(pType.rawType(), genericArgs);
+			} else {
+				returnType = nameWithGenerics;
+			}
+			// Full arg list
+			final TypeName mapperFunctionalType;
+			if (isFullyPrimitive()) {
+				mapperFunctionalType = fi.primitiveTypeOperators().get(entry.type());
+			} else {
+				if (entry.isObj()) {
+					mapperFunctionalType = fi.parameterizedMapper(genericArgs, MAP_RETURN_TYPE);
+				} else {
+					mapperFunctionalType = ParameterizedTypeName.get(
+							fi.primitiveTypeOperators().get(entry.type()),
+							genericArgs);
+				}
+			}
+			final ParameterSpec fullMapperArg = ParameterSpec
+					.builder(mapperFunctionalType, "fn", Modifier.FINAL)
+					.build();
+			ms.add(MethodSpec.methodBuilder("map" + (i + 1))
+					.addTypeVariable(MAP_RETURN_TYPE)
+					.returns(returnType)
+					.addParameter(fullMapperArg)
+					.addModifiers(Modifier.PUBLIC)
+					.addStatement("return $T.of($L)",
+							name,
+							idx().mapToObj(j -> {
+								final String varName = entryFields.get(j).name();
+								if (i == j) return "fn.apply(" + argList(entryFields) + ")";
+								else return varName;
+							}).collect(Collectors.joining(", ")))
+					.build());
+
+			// Single arg
+			ms.add(entry.genMapper(this, returnType));
+
+//            if (type.isPrimitive()) {
+//                // ToObj Mapper
+//                tupleClassBuilder.addMethod(
+//                        singleArgMapperFor(index, tuple, type, typeName,
+//                                MethodSpec.methodBuilder("map" + (index + 1) + "ToObj")
+//                                        .addModifiers(Modifier.PUBLIC)
+//                                        .returns(returnType)));
+//            }
 		});
 		return ms;
 	}

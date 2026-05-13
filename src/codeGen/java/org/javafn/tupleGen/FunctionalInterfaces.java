@@ -1,4 +1,4 @@
-package org.javafn.tuple;
+package org.javafn.tupleGen;
 
 import com.palantir.javapoet.ClassName;
 import com.palantir.javapoet.MethodSpec;
@@ -10,8 +10,8 @@ import com.palantir.javapoet.TypeVariableName;
 import javax.lang.model.element.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.function.BiConsumer;
@@ -20,27 +20,14 @@ import java.util.function.BiPredicate;
 import java.util.stream.Collectors;
 
 import static java.util.function.Predicate.not;
-import static org.javafn.tuple.GenerateTuples.PACKAGE_NAME;
 
 public record FunctionalInterfaces(
 		ClassName fullPredicate,
 		ClassName fullConsumer,
 		ClassName fullMapper,
-		Map<TupleEntry, ClassName> primitiveTypeOperators,
+		Map<TypeName, ClassName> primitiveTypeOperators,
 		List<TypeSpec> newTypes
 ) {
-
-	static final TypeVariableName MAP_RETURN_TYPE = TypeVariableName.get("R");
-
-	static String capitalize(final String name) {
-		return name.substring(0, 1).toUpperCase(Locale.ROOT) + name.substring(1);
-	}
-
-	static ClassName genFullClassName(final String tupleSimpleName, final String suffix) {
-		return ClassName.get(PACKAGE_NAME,
-				tupleSimpleName,
-				tupleSimpleName + suffix);
-	}
 
 	public static FunctionalInterfaces of(final Tuple tuple) {
 		final List<TupleEntry> entries = tuple.entries();
@@ -56,9 +43,9 @@ public record FunctionalInterfaces(
 		}
 		final List<TypeSpec> newTypes = new ArrayList<>();
 
-		final ClassName predicate = genFullClassName(tuple.name().simpleName(), "Predicate");
-		final ClassName consumer = genFullClassName(tuple.name().simpleName(), "Consumer");
-		final ClassName mapper = genFullClassName(tuple.name().simpleName(), "Function");
+		final ClassName predicate = Util.genNestedClassName(tuple.name().simpleName(), "Predicate");
+		final ClassName consumer = Util.genNestedClassName(tuple.name().simpleName(), "Consumer");
+		final ClassName mapper = Util.genNestedClassName(tuple.name().simpleName(), "Function");
 
 		newTypes.add(TypeSpec.interfaceBuilder(predicate)
 				.addAnnotation(FunctionalInterface.class)
@@ -82,7 +69,7 @@ public record FunctionalInterfaces(
 
 		final List<TypeVariableName> mapperGenericArgs = new ArrayList<>(tuple.genericArgs().length + 1);
 		mapperGenericArgs.addAll(List.of(tuple.genericArgs()));
-		mapperGenericArgs.add(MAP_RETURN_TYPE);
+		mapperGenericArgs.add(Util.MAP_RETURN_TYPE);
 		newTypes.add(TypeSpec.interfaceBuilder(mapper)
 				.addAnnotation(FunctionalInterface.class)
 				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
@@ -90,29 +77,28 @@ public record FunctionalInterfaces(
 				.addMethod(MethodSpec.methodBuilder("apply")
 						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
 						.addParameters(tuple.entryFields())
-						.returns(MAP_RETURN_TYPE)
+						.returns(Util.MAP_RETURN_TYPE)
 						.build())
 				.build());
 
-		final Map<TupleEntry, ClassName> operators = entries.stream()
-				.filter(not(TupleEntry::isObj))
-				.distinct()
-				.map(type -> {
-					final ClassName operator = genFullClassName(tuple.name().simpleName(),
-							"To" + capitalize(type.toString()) + "Operator");
-					newTypes.add(TypeSpec.interfaceBuilder(operator)
-							.addAnnotation(FunctionalInterface.class)
-							.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-							.addTypeVariables(Arrays.asList(tuple.genericArgs()))
-							.addMethod(MethodSpec.methodBuilder("apply")
-									.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
-									.addParameters(tuple.entryFields())
-									.returns(type.varTypeName())
-									.build())
-							.build());
-					return Map.entry(type, operator);
-				})
-				.collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+		final Map<TypeName, ClassName> operators = new HashMap<>();
+		for (final TupleEntry entry : entries) {
+			if (!(entry.isObj() || operators.containsKey(entry.type()))) {
+				final ClassName operator = Util.genNestedClassName(tuple.name().simpleName(),
+						"To" + Util.capitalize(entry.typeName()) + "Operator");
+				newTypes.add(TypeSpec.interfaceBuilder(operator)
+						.addAnnotation(FunctionalInterface.class)
+						.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+						.addTypeVariables(Arrays.asList(tuple.genericArgs()))
+						.addMethod(MethodSpec.methodBuilder("apply")
+								.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
+								.addParameters(tuple.entryFields())
+								.returns(entry.varTypeName())
+								.build())
+						.build());
+				operators.put(entry.type(), operator);
+			}
+		}
 
 		return new FunctionalInterfaces(predicate, consumer, mapper, operators, newTypes);
 	}
