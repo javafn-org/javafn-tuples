@@ -10,6 +10,7 @@ import com.palantir.javapoet.TypeVariableName;
 import javax.lang.model.element.Modifier;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
 import java.util.function.DoublePredicate;
@@ -52,7 +53,23 @@ public interface TupleEntry {
 	TypeName consumer();
 	TypeName mapper(ClassName toType);
 	MethodSpec genSetter(Tuple tuple);
-	MethodSpec genMapper(Tuple tuple, TypeName returnType);
+	default MethodSpec genFullArgListMapper(Tuple tuple, TypeName returnType, ParameterSpec fullMapperArg) {
+		return MethodSpec.methodBuilder("map" + (index() + 1))
+				.addTypeVariable(MAP_RETURN_TYPE)
+				.returns(returnType)
+				.addParameter(fullMapperArg)
+				.addModifiers(Modifier.PUBLIC)
+				.addStatement("$T.requireNonNull(fn)", Objects.class)
+				.addStatement("return $T.of($L)",
+						tuple.name(),
+						tuple.idx().mapToObj(j -> {
+							final String varName = tuple.entryFields().get(j).name();
+							if (index() == j) return "fn.apply(" + Tuple.argList(tuple.entryFields()) + ")";
+							else return varName;
+						}).collect(Collectors.joining(", ")))
+				.build();
+	}
+	MethodSpec genSingleArgMapper(Tuple tuple, TypeName returnType);
 
 	static TupleEntry of(final TypeName type, final int i) {
 		if (type.equals(ClassName.OBJECT)) {
@@ -119,7 +136,23 @@ public interface TupleEntry {
 					.build();
 			return methodBuilder.build();
 		}
-		@Override public MethodSpec genMapper(final Tuple tuple, final TypeName returnType) {
+		@Override public MethodSpec genFullArgListMapper(final Tuple tuple, final TypeName returnType, final ParameterSpec fullMapperArg) {
+			return MethodSpec.methodBuilder("map" + (index + 1))
+					.addTypeVariable(MAP_RETURN_TYPE)
+					.returns(returnType)
+					.addParameter(fullMapperArg)
+					.addModifiers(Modifier.PUBLIC)
+					.addStatement("$T.requireNonNull(fn)", Objects.class)
+					.addStatement("return $T.of($L)",
+							tuple.name(),
+							tuple.idx().mapToObj(j -> {
+								final String varName = tuple.entryFields().get(j).name();
+								if (index == j) return "fn.apply(" + Tuple.argList(tuple.entryFields()) + ")";
+								else return varName;
+							}).collect(Collectors.joining(", ")))
+					.build();
+		}
+		@Override public MethodSpec genSingleArgMapper(final Tuple tuple, final TypeName returnType) {
 			return MethodSpec.methodBuilder("map" + (index + 1))
 					.addTypeVariable(MAP_RETURN_TYPE)
 					.returns(returnType)
@@ -127,6 +160,7 @@ public interface TupleEntry {
 							ParameterizedTypeName.get(ClassName.get(Function.class), type(), MAP_RETURN_TYPE),
 							"fn", Modifier.FINAL)
 							.build())
+					.addStatement("$T.requireNonNull(fn)", Objects.class)
 					.addStatement("return $T.of($L)",
 							tuple.name(),
 							tuple.idx().mapToObj(j -> {
@@ -166,7 +200,7 @@ public interface TupleEntry {
 		@Override public MethodSpec genSetter(final Tuple tuple) {
 			return genPrimitiveSetter(tuple, index, INT_ARG_FIELD);
 		}
-		@Override public MethodSpec genMapper(final Tuple tuple, final TypeName returnType) {
+		@Override public MethodSpec genSingleArgMapper(final Tuple tuple, final TypeName returnType) {
 			return TupleEntry.genPrimitiveMapper(tuple, index, IntUnaryOperator.class, returnType, "applyAsInt");
 		}
 	}
@@ -199,7 +233,7 @@ public interface TupleEntry {
 			return genPrimitiveSetter(tuple, index, LONG_ARG_FIELD);
 		}
 
-		@Override public MethodSpec genMapper(final Tuple tuple, final TypeName returnType) {
+		@Override public MethodSpec genSingleArgMapper(final Tuple tuple, final TypeName returnType) {
 			return TupleEntry.genPrimitiveMapper(tuple, index, LongUnaryOperator.class, returnType, "applyAsLong");
 		}
 	}
@@ -231,7 +265,7 @@ public interface TupleEntry {
 		@Override public MethodSpec genSetter(final Tuple tuple) {
 			return genPrimitiveSetter(tuple, index, DOUBLE_ARG_FIELD);
 		}
-		@Override public MethodSpec genMapper(final Tuple tuple, final TypeName returnType) {
+		@Override public MethodSpec genSingleArgMapper(final Tuple tuple, final TypeName returnType) {
 			return TupleEntry.genPrimitiveMapper(tuple, index, DoubleUnaryOperator.class, returnType, "applyAsDouble");
 		}
 	}
@@ -264,6 +298,7 @@ public interface TupleEntry {
 								"fn",
 								Modifier.FINAL)
 						.build())
+				.addStatement("$T.requireNonNull(fn)", Objects.class)
 				.addStatement("return $T.of($L)",
 						tuple.name(),
 						tuple.idx().mapToObj(j -> {

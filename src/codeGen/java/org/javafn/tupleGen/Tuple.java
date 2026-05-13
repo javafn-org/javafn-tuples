@@ -12,6 +12,8 @@ import javax.lang.model.element.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -25,6 +27,12 @@ public record Tuple(
 		List<ParameterSpec> entryFields,
 		TypeVariableName[] genericArgs
 ) {
+	static final Map<String, String> NAME_OVERRIDES = Map.of(
+			"ObjObjTuple", "PairType",
+			"ObjObjObjTuple", "TrioType",
+			"ObjObjObjObjTuple", "QuadType",
+			"IntObjTuple", "Index");
+
 	static List<TupleEntry> toEntries(final List<TypeName> types) {
 		return IntStream.range(0, types.size())
 				.mapToObj(i -> TupleEntry.of(types.get(i), i))
@@ -42,11 +50,7 @@ public record Tuple(
 		final String name = entries.stream()
 				.map(TupleEntry::typeName)
 				.collect(Collectors.joining()) + "Tuple";
-		return of(entries, name);
-	}
-
-	public static Tuple of(final String name, final List<TypeName> types) {
-		return of(toEntries(types), name);
+		return of(entries, NAME_OVERRIDES.getOrDefault(name, name));
 	}
 
 	public static Tuple of(final List<TupleEntry> entries, final String _name) {
@@ -67,8 +71,8 @@ public record Tuple(
 		return genericArgs.length == 0;
 	}
 
-	public boolean hasPrimitive() {
-		return entries.size() != genericArgs.length;
+	public boolean isFullyNonPrimitive() {
+		return entries.size() == genericArgs.length;
 	}
 
 	public IntStream idx() {
@@ -103,6 +107,7 @@ public record Tuple(
 						fi.parameterizedPredicate(genericArgs), "fn", Modifier.FINAL)
 						.build())
 				.addModifiers(Modifier.PUBLIC)
+				.addStatement("$T.requireNonNull(fn)", Objects.class)
 				.addStatement("return fn.test($L)", argList(entryFields))
 				.build());
 		// Single argument matches
@@ -117,6 +122,7 @@ public record Tuple(
 									Modifier.FINAL)
 							.build())
 					.addModifiers(Modifier.PUBLIC)
+					.addStatement("$T.requireNonNull(fn)", Objects.class)
 					.addStatement("return fn.test($L)", field.name())
 					.build());
 		});
@@ -135,6 +141,7 @@ public record Tuple(
 								Modifier.FINAL)
 						.build())
 				.addModifiers(Modifier.PUBLIC)
+				.addStatement("$T.requireNonNull(fn)", Objects.class)
 				.addStatement("fn.accept($L)", argList(entryFields))
 				.addStatement("return this")
 				.build());
@@ -146,6 +153,7 @@ public record Tuple(
 								Modifier.FINAL)
 						.build())
 				.addModifiers(Modifier.PUBLIC)
+				.addStatement("$T.requireNonNull(fn)", Objects.class)
 				.addStatement("fn.accept($L)", argList(entryFields))
 				.build());
 		// Single arg peek
@@ -159,6 +167,7 @@ public record Tuple(
 									Modifier.FINAL)
 							.build())
 					.addModifiers(Modifier.PUBLIC)
+					.addStatement("$T.requireNonNull(fn)", Objects.class)
 					.addStatement("fn.accept($L)", field.name())
 					.addStatement("return this")
 					.build());
@@ -178,12 +187,12 @@ public record Tuple(
 								Modifier.FINAL)
 						.build())
 				.addModifiers(Modifier.PUBLIC)
+				.addStatement("$T.requireNonNull(fn)", Objects.class)
 				.addStatement("return fn.apply($L)", argList(entryFields))
 				.build());
 		// Single element map, full args and single args
 		idx().forEach(i -> {
 			final TupleEntry entry = entries.get(i);
-			final ParameterSpec field = entryFields.get(i);
 
 			final TypeName returnType;
 			if (nameWithGenerics instanceof ParameterizedTypeName pType) {
@@ -199,37 +208,28 @@ public record Tuple(
 				returnType = nameWithGenerics;
 			}
 			// Full arg list
-			final TypeName mapperFunctionalType;
-			if (isFullyPrimitive()) {
-				mapperFunctionalType = fi.primitiveTypeOperators().get(entry.type());
-			} else {
-				if (entry.isObj()) {
-					mapperFunctionalType = fi.parameterizedMapper(genericArgs, MAP_RETURN_TYPE);
+			final ParameterSpec fullMapperArg;
+			{
+				final TypeName mapperFunctionalType;
+				if (isFullyPrimitive()) {
+					mapperFunctionalType = fi.primitiveTypeOperators().get(entry.type());
 				} else {
-					mapperFunctionalType = ParameterizedTypeName.get(
-							fi.primitiveTypeOperators().get(entry.type()),
-							genericArgs);
+					if (entry.isObj()) {
+						mapperFunctionalType = fi.parameterizedMapper(genericArgs, MAP_RETURN_TYPE);
+					} else {
+						mapperFunctionalType = ParameterizedTypeName.get(
+								fi.primitiveTypeOperators().get(entry.type()),
+								genericArgs);
+					}
 				}
+				fullMapperArg = ParameterSpec
+						.builder(mapperFunctionalType, "fn", Modifier.FINAL)
+						.build();
 			}
-			final ParameterSpec fullMapperArg = ParameterSpec
-					.builder(mapperFunctionalType, "fn", Modifier.FINAL)
-					.build();
-			ms.add(MethodSpec.methodBuilder("map" + (i + 1))
-					.addTypeVariable(MAP_RETURN_TYPE)
-					.returns(returnType)
-					.addParameter(fullMapperArg)
-					.addModifiers(Modifier.PUBLIC)
-					.addStatement("return $T.of($L)",
-							name,
-							idx().mapToObj(j -> {
-								final String varName = entryFields.get(j).name();
-								if (i == j) return "fn.apply(" + argList(entryFields) + ")";
-								else return varName;
-							}).collect(Collectors.joining(", ")))
-					.build());
+			ms.add(entry.genFullArgListMapper(this, returnType, fullMapperArg));
 
 			// Single arg
-			ms.add(entry.genMapper(this, returnType));
+			ms.add(entry.genSingleArgMapper(this, returnType));
 
 //            if (type.isPrimitive()) {
 //                // ToObj Mapper

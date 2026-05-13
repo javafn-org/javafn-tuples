@@ -8,25 +8,25 @@ import com.palantir.javapoet.ParameterizedTypeName;
 import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeSpec;
 import com.palantir.javapoet.TypeVariableName;
+import org.javafn.utils.Data;
 
 import javax.lang.model.element.Modifier;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Objects;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.IntConsumer;
-import java.util.function.IntUnaryOperator;
-import java.util.function.LongConsumer;
-import java.util.function.LongUnaryOperator;
-import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class GenerateTuples {
 
     public static final String PACKAGE_NAME = "org.javafn.tuples";
+
+    public static final List<TypeName> DISTINCT_TYPES = List.of(
+            ClassName.OBJECT, ClassName.INT, ClassName.LONG, ClassName.DOUBLE);
 
     public static void main(String[] args) throws IOException {
         final File out = new File("build/generated/main/java");
@@ -36,13 +36,28 @@ public class GenerateTuples {
             }
         }
 
-        genTuple(out, Tuple.of("PairType", List.of(ClassName.OBJECT, ClassName.OBJECT)));
-        genTuple(out, Tuple.of("TrioType", List.of(ClassName.OBJECT, ClassName.OBJECT, ClassName.OBJECT)));
-        genTuple(out, Tuple.of("QuadType", List.of(ClassName.OBJECT, ClassName.OBJECT, ClassName.OBJECT, ClassName.OBJECT)));
-        genTuple(out, Tuple.of("Index", List.of(ClassName.INT, ClassName.OBJECT)));
-        genTuple(out, Tuple.of(List.of(ClassName.INT, ClassName.INT)));
-        genTuple(out, Tuple.of(List.of(ClassName.INT, ClassName.OBJECT, ClassName.OBJECT)));
-        genTuple(out, Tuple.of(List.of(ClassName.INT, ClassName.LONG)));
+        final List<List<TypeName>> tuples2 = DISTINCT_TYPES.stream()
+                .map(List::of)
+                .flatMap(l -> DISTINCT_TYPES.stream()
+                        .map(r -> Data.append(l, r)))
+                .toList();
+        final List<List<TypeName>> tuples3 = tuples2.stream()
+                .map(l -> Data.append(l, ClassName.OBJECT))
+                .toList();
+        final List<List<TypeName>> tuples4 = tuples2.stream()
+                .map(l -> Data.append(l, List.of(ClassName.OBJECT, ClassName.OBJECT)))
+                .toList();
+
+        Stream.of(tuples2, tuples3, tuples4)
+                .flatMap(List::stream)
+                .map(Tuple::of)
+                .forEach(tuple -> {
+	                try {
+		                genTuple(out, tuple);
+	                } catch (IOException e) {
+		                throw new RuntimeException(e);
+	                }
+                });
     }
 
     static void genTuple(final File packageDir, final Tuple tuple) throws IOException {
@@ -52,6 +67,8 @@ public class GenerateTuples {
         final TypeSpec.Builder tupleClassBuilder = TypeSpec.recordBuilder(tuple.name())
                 .addModifiers(Modifier.PUBLIC)
                 .recordConstructor(tuple.genConstructor())
+                .addTypes(fi.newTypes())
+                .addTypeVariables(Arrays.asList(tuple.genericArgs()))
                 .addMethod(tuple.genStaticFactory())
                 .addMethods(tuple.genPredicates(fi))
                 .addMethods(tuple.genConsumers(fi))
@@ -59,13 +76,6 @@ public class GenerateTuples {
                 .addMethods(tuple.entries().stream()
                         .map(e -> e.genSetter(tuple))
                 .toList());
-
-        if (!fi.newTypes().isEmpty()) {
-             tupleClassBuilder.addTypes(fi.newTypes());
-        }
-        if (tuple.genericArgs().length > 0) {
-            tupleClassBuilder.addTypeVariables(Arrays.asList(tuple.genericArgs()));
-        }
 
         customize(tupleClassBuilder, tuple);
 
@@ -75,7 +85,7 @@ public class GenerateTuples {
     }
 
     static void customize(final TypeSpec.Builder tupleClassBuilder, final Tuple tuple) {
-        if (tuple.entries().size() == 2 && !tuple.hasPrimitive()) {
+        if ("PairType".equals(tuple.name().simpleName())) {
             // Pair type
             final TypeVariableName[] genericArgs = new TypeVariableName[]{
                     TypeVariableName.get("KEY"),
@@ -86,6 +96,7 @@ public class GenerateTuples {
                             ParameterizedTypeName.get(ClassName.get(Entry.class), genericArgs),
                             "e", Modifier.FINAL).build())
                     .returns(ParameterizedTypeName.get(tuple.name(), genericArgs))
+                            .addStatement("$T.requireNonNull(e)", Objects.class)
                             .addStatement("return new $T<>(e.getKey(), e.getValue())", tuple.name())
                     .build());
         }

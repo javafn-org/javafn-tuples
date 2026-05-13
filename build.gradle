@@ -45,6 +45,7 @@ tasks.register('genSrc', JavaExec) {
 tasks.named('compileJava') { dependsOn tasks.named('genSrc') }
 
 dependencies {
+	codeGenImplementation('org.javafn:javafn-utils:0.1.4')
 	codeGenImplementation('com.palantir.javapoet:javapoet:0.14.0')
 	testImplementation('junit:junit:4.13.1')
 }

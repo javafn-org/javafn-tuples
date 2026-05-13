@@ -13,13 +13,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
-import java.util.stream.Collectors;
-
-import static java.util.function.Predicate.not;
 
 public record FunctionalInterfaces(
 		ClassName fullPredicate,
@@ -35,7 +31,7 @@ public record FunctionalInterfaces(
 		if (nTypes < 2 || nTypes > 4) {
 			throw new IllegalStateException("Only tuples of length 2, 3, or 4 are supported");
 		}
-		if (nTypes == 2 && !tuple.hasPrimitive()) {
+		if (nTypes == 2 && tuple.isFullyNonPrimitive()) {
 			// This is a pair; let's reuse the Bi* interfaces
 			return new FunctionalInterfaces(
 					ClassName.get(BiPredicate.class), ClassName.get(BiConsumer.class),
