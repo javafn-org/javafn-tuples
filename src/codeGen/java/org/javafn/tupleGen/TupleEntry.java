@@ -8,9 +8,11 @@ import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeVariableName;
 import org.javafn.tupleGen.Util.Generic;
 import org.javafn.tupleGen.Util.MapperType;
+import org.javafn.utils.Data;
 
 import javax.lang.model.element.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -42,7 +44,7 @@ public interface TupleEntry {
 	ParameterSpec paramSpec(Modifier... modifiers);
 	TypeName predicateName();
 	TypeName consumerName();
-	TypeName mapper(ClassName toType);
+	TypeName mapper(TypeName toType);
 	MethodSpec genSetter(Tuple tuple);
 	default MethodSpec genPredicate(final ParameterSpec field) {
 		return MethodSpec.methodBuilder("matches" + (index() + 1))
@@ -57,7 +59,24 @@ public interface TupleEntry {
 				.addStatement("return fn.test($L)", field.name())
 				.build();
 	}
-	default MethodSpec genConsumer(Tuple tuple, ParameterSpec field) {
+	default MethodSpec genStaticPredicate(final Tuple tuple) {
+		final String qualifier = getQualifier(tuple);
+		final String staticMethodName = "matches" + qualifier + (index() + 1);
+		final String memberMethodName = "matches" + (index() + 1);
+		return MethodSpec.methodBuilder(staticMethodName)
+				.addTypeVariables(Arrays.asList(tuple.genericArgs()))
+				.returns(ParameterizedTypeName.get(
+						ClassName.get(Predicate.class), tuple.nameWithGenerics()))
+				.addParameter(ParameterSpec.builder(
+								predicateName(),
+								"fn",
+								Modifier.FINAL)
+						.build())
+				.addModifiers(Modifier.PUBLIC)
+				.addStatement("return tuple -> tuple.$L(fn)", memberMethodName)
+				.build();
+	}
+	default MethodSpec genConsumer(final Tuple tuple, final ParameterSpec field) {
 		return MethodSpec.methodBuilder("peek" + (index() + 1))
 				.returns(tuple.nameWithGenerics())
 				.addParameter(ParameterSpec.builder(consumerName(),
@@ -70,6 +89,22 @@ public interface TupleEntry {
 				.addStatement("return this")
 				.build();
 	}
+	default MethodSpec genStaticConsumer(final Tuple tuple) {
+		final String qualifier = getQualifier(tuple);
+		final String staticMethodName = "peek" + qualifier + (index() + 1);
+		final String memberMethodName = "peek" + (index() + 1);
+		return MethodSpec.methodBuilder(staticMethodName)
+				.addTypeVariables(Arrays.asList(tuple.genericArgs()))
+				.returns(ParameterizedTypeName.get(ClassName.get(Consumer.class), tuple.nameWithGenerics()))
+				.addParameter(ParameterSpec.builder(consumerName(),
+								"fn",
+								Modifier.FINAL)
+						.build())
+				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+				.addStatement("return tuple -> tuple.$L(fn)", memberMethodName)
+				.build();
+	}
+	MethodSpec genStaticFullArgListMapper(Tuple tuple, TypeName returnType);
 	default MethodSpec genFullArgListMapper(Tuple tuple, TypeName returnType, ParameterSpec fullArgList) {
 		return MethodSpec.methodBuilder("map" + (index() + 1))
 				.addTypeVariable(Generic.R.varTypeName())
@@ -120,12 +155,13 @@ public interface TupleEntry {
 		@Override public TypeName consumerName() {
 			return ParameterizedTypeName.get(ClassName.get(Consumer.class), generic.varTypeName());
 		}
-		@Override public TypeName mapper(final ClassName toType) {
-			final var mapper = TYPE_MAPPERS.get(ClassName.OBJECT).get(toType);
-			if (mapper == null) throw new IllegalArgumentException("Unexpected type " + toType);
+		@Override public TypeName mapper(final TypeName toType) {
 			if (toType.isPrimitive()) {
+				final var mapper = TYPE_MAPPERS.get(ClassName.OBJECT).get(toType);
+				if (mapper == null) throw new IllegalArgumentException("Unexpected type " + toType);
 				return mapper.fn();
 			} else {
+				final var mapper = TYPE_MAPPERS.get(ClassName.OBJECT).get(ClassName.OBJECT);
 				return ParameterizedTypeName.get(mapper.fn(), generic.varTypeName(), toType);
 			}
 		}
@@ -186,6 +222,10 @@ public interface TupleEntry {
 							}).collect(Collectors.joining(", ")))
 					.build();
 		}
+		@Override public MethodSpec genStaticFullArgListMapper(final Tuple tuple, final TypeName returnType) {
+			return genStaticFullArgMapper(tuple, index, returnType, mapper(Generic.R.varTypeName()), List.of(Generic.R.varTypeName()));
+		}
+
 		@Override public MethodSpec genSingleArgMapperTo(final Tuple tuple, final TypeName toType) {
 			return TupleEntry.genPrimitiveSingleArgMapper(tuple, index, ClassName.OBJECT, toType);
 		}
@@ -201,7 +241,7 @@ public interface TupleEntry {
 		}
 		@Override public TypeName predicateName() { return TypeName.get(IntPredicate.class); }
 		@Override public TypeName consumerName() { return TypeName.get(IntConsumer.class); }
-		@Override public TypeName mapper(final ClassName toType) {
+		@Override public TypeName mapper(final TypeName toType) {
 			final MapperType mapper = TYPE_MAPPERS.get(ClassName.INT).get(toType);
 			if (mapper == null) throw new IllegalArgumentException("Unexpected type " + toType);
 			if (toType.isPrimitive()) {
@@ -219,6 +259,9 @@ public interface TupleEntry {
 		@Override public MethodSpec genSingleArgMapperTo(final Tuple tuple, final TypeName toType) {
 			return TupleEntry.genPrimitiveSingleArgMapper(tuple, index, TypeName.INT, toType);
 		}
+		@Override public MethodSpec genStaticFullArgListMapper(Tuple tuple, TypeName returnType) {
+			return genStaticFullArgMapper(tuple, index, returnType, mapper(ClassName.INT), List.of());
+		}
 	}
 
 	record LongType(int index) implements TupleEntry {
@@ -230,7 +273,7 @@ public interface TupleEntry {
 		}
 		@Override public TypeName predicateName() { return TypeName.get(LongPredicate.class); }
 		@Override public TypeName consumerName() { return TypeName.get(LongConsumer.class); }
-		@Override public TypeName mapper(final ClassName toType) {
+		@Override public TypeName mapper(final TypeName toType) {
 			final MapperType mapper = TYPE_MAPPERS.get(ClassName.LONG).get(toType);
 			if (mapper == null) throw new IllegalArgumentException("Unexpected type " + toType);
 			if (toType.isPrimitive()) {
@@ -249,6 +292,9 @@ public interface TupleEntry {
 		@Override public MethodSpec genSingleArgMapperTo(final Tuple tuple, final TypeName toType) {
 			return TupleEntry.genPrimitiveSingleArgMapper(tuple, index, ClassName.LONG, toType);
 		}
+		@Override public MethodSpec genStaticFullArgListMapper(final Tuple tuple, final TypeName returnType) {
+			return genStaticFullArgMapper(tuple, index, returnType, mapper(ClassName.LONG), List.of());
+		}
 	}
 
 	record DoubleType(int index) implements TupleEntry {
@@ -260,7 +306,7 @@ public interface TupleEntry {
 		}
 		@Override public TypeName predicateName() { return TypeName.get(DoublePredicate.class); }
 		@Override public TypeName consumerName() { return TypeName.get(DoubleConsumer.class); }
-		@Override public TypeName mapper(final ClassName toType) {
+		@Override public TypeName mapper(final TypeName toType) {
 			final MapperType mapper = TYPE_MAPPERS.get(ClassName.DOUBLE).get(toType);
 			if (mapper == null) throw new IllegalArgumentException("Unexpected type " + toType);
 			if (toType.isPrimitive()) {
@@ -277,6 +323,9 @@ public interface TupleEntry {
 		}
 		@Override public MethodSpec genSingleArgMapperTo(final Tuple tuple, final TypeName toType) {
 			return TupleEntry.genPrimitiveSingleArgMapper(tuple, index, ClassName.DOUBLE, toType);
+		}
+		@Override public MethodSpec genStaticFullArgListMapper(final Tuple tuple, final TypeName returnType) {
+			return genStaticFullArgMapper(tuple, index, returnType, mapper(ClassName.DOUBLE), List.of());
 		}
 	}
 
@@ -358,5 +407,35 @@ public interface TupleEntry {
 							else return varName;
 						}).collect(Collectors.joining(", ")))
 				.build();
+	}
+	private static MethodSpec genStaticFullArgMapper(
+			final Tuple tuple,
+			final int index,
+			final TypeName returnType,
+			final TypeName mapperType,
+			final List<TypeVariableName> extraTypeParams) {
+		final String qualifier = getQualifier(tuple);
+		final String staticMethodName = "map" + qualifier + (index + 1);
+		final String memberMethodName = "map" + (index + 1);
+		return MethodSpec.methodBuilder(staticMethodName)
+				.addTypeVariables(Data.append(Arrays.<TypeVariableName>asList(tuple.genericArgs()), extraTypeParams))
+				.returns(ParameterizedTypeName.get(ClassName.get(Function.class), tuple.nameWithGenerics(), returnType))
+				.addParameter(ParameterSpec.builder(mapperType,
+								"fn",
+								Modifier.FINAL)
+						.build())
+				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+				.addStatement("return tuple -> tuple.$L(fn)", memberMethodName)
+				.build();
+	}
+
+	private static String getQualifier(Tuple tuple) {
+		final String qualifier;
+		if (tuple.isFullyNonPrimitive()) {
+			qualifier = "";
+		} else {
+			qualifier = tuple.entries().stream().map(TupleEntry::typeName).map(n -> n.substring(0,1)).collect(Collectors.joining());
+		}
+		return qualifier;
 	}
 }

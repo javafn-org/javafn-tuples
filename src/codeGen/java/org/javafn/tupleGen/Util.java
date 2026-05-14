@@ -72,27 +72,27 @@ public class Util {
 	static final Map<TypeName, Map<TypeName, MapperType>> TYPE_MAPPERS = Map.of(
 			ClassName.OBJECT, Map.of(
 					ClassName.OBJECT, new MapperType(ClassName.get(Function.class), "apply"),
-					ClassName.INT, new MapperType(ClassName.get(ToIntFunction.class), "applyAsInt"),
-					ClassName.LONG, new MapperType(ClassName.get(ToLongFunction.class), "applyAsLong"),
-					ClassName.DOUBLE, new MapperType(ClassName.get(ToDoubleFunction.class), "applyAsDouble")
+					TypeName.INT, new MapperType(ClassName.get(ToIntFunction.class), "applyAsInt"),
+					TypeName.LONG, new MapperType(ClassName.get(ToLongFunction.class), "applyAsLong"),
+					TypeName.DOUBLE, new MapperType(ClassName.get(ToDoubleFunction.class), "applyAsDouble")
 			),
 			TypeName.INT, Map.of(
 					ClassName.OBJECT, new MapperType(ClassName.get(IntFunction.class), "apply"),
-					ClassName.INT, new MapperType(ClassName.get(IntUnaryOperator.class), "applyAsInt"),
-					ClassName.LONG, new MapperType(ClassName.get(IntToLongFunction.class), "applyAsLong"),
-					ClassName.DOUBLE, new MapperType(ClassName.get(IntToDoubleFunction.class), "applyAsDouble")
+					TypeName.INT, new MapperType(ClassName.get(IntUnaryOperator.class), "applyAsInt"),
+					TypeName.LONG, new MapperType(ClassName.get(IntToLongFunction.class), "applyAsLong"),
+					TypeName.DOUBLE, new MapperType(ClassName.get(IntToDoubleFunction.class), "applyAsDouble")
 			),
 			TypeName.LONG, Map.of(
 					ClassName.OBJECT, new MapperType(ClassName.get(LongFunction.class), "apply"),
-					ClassName.INT, new MapperType(ClassName.get(LongToIntFunction.class), "applyAsInt"),
-					ClassName.LONG, new MapperType(ClassName.get(LongUnaryOperator.class), "applyAsLong"),
-					ClassName.DOUBLE, new MapperType(ClassName.get(LongToDoubleFunction.class), "applyAsDouble")
+					TypeName.INT, new MapperType(ClassName.get(LongToIntFunction.class), "applyAsInt"),
+					TypeName.LONG, new MapperType(ClassName.get(LongUnaryOperator.class), "applyAsLong"),
+					TypeName.DOUBLE, new MapperType(ClassName.get(LongToDoubleFunction.class), "applyAsDouble")
 			),
 			TypeName.DOUBLE, Map.of(
 					ClassName.OBJECT, new MapperType(ClassName.get(DoubleFunction.class), "apply"),
-					ClassName.INT, new MapperType(ClassName.get(DoubleToIntFunction.class), "applyAsInt"),
-					ClassName.LONG, new MapperType(ClassName.get(DoubleToLongFunction.class), "applyAsLong"),
-					ClassName.DOUBLE, new MapperType(ClassName.get(DoubleUnaryOperator.class), "applyAsDouble")
+					TypeName.INT, new MapperType(ClassName.get(DoubleToIntFunction.class), "applyAsInt"),
+					TypeName.LONG, new MapperType(ClassName.get(DoubleToLongFunction.class), "applyAsLong"),
+					TypeName.DOUBLE, new MapperType(ClassName.get(DoubleUnaryOperator.class), "applyAsDouble")
 			)
 	);
 

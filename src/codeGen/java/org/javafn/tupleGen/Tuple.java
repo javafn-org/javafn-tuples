@@ -10,6 +10,7 @@ import com.palantir.javapoet.TypeSpec;
 import com.palantir.javapoet.TypeVariableName;
 import org.javafn.tupleGen.TupleEntry.ObjectType;
 import org.javafn.tupleGen.Util.Generic;
+import org.javafn.utils.Data;
 
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
@@ -21,6 +22,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Spliterator;
 import java.util.Spliterators;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -149,6 +153,23 @@ public record Tuple(
 		return ms;
 	}
 
+	public List<MethodSpec> genStaticPredicates(final FunctionalInterfaces fi) {
+		final List<MethodSpec> ms = new ArrayList<>(entries.size() + 1);
+		// Full element list matches
+		ms.add(MethodSpec.methodBuilder("matches")
+				.addTypeVariables(Arrays.asList(genericArgs))
+				.returns(ParameterizedTypeName.get(ClassName.get(Predicate.class), nameWithGenerics))
+				.addParameter(ParameterSpec.builder(
+								fi.parameterizedPredicate(genericArgs), "fn", Modifier.FINAL)
+						.build())
+				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+				.addStatement("return tuple -> tuple.matches(fn)")
+				.build());
+		// Single argument matches
+		idx().forEach(i -> ms.add(entries.get(i).genStaticPredicate(this)));
+		return ms;
+	}
+
 	public List<MethodSpec> genConsumers(final FunctionalInterfaces fi) {
 
 		final List<MethodSpec> ms = new ArrayList<>(entries.size() + 2);
@@ -178,6 +199,80 @@ public record Tuple(
 				.build());
 		// Single arg peek
 		idx().forEach(i -> ms.add(entries.get(i).genConsumer(this, entryFields.get(i))));
+		return ms;
+	}
+
+	public List<MethodSpec> genStaticConsumers(final FunctionalInterfaces fi) {
+		final List<MethodSpec> ms = new ArrayList<>(entries.size() + 1);
+		// Full element list peekers
+		ms.add(MethodSpec.methodBuilder("peek")
+				.addTypeVariables(Arrays.asList(genericArgs))
+				.returns(ParameterizedTypeName.get(ClassName.get(Consumer.class), nameWithGenerics))
+				.addParameter(ParameterSpec.builder(
+								fi.parameterizedConsumer(genericArgs), "fn", Modifier.FINAL)
+						.build())
+				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+				.addStatement("return tuple -> tuple.peek(fn)")
+				.build());
+		// Single argument peekers
+		idx().forEach(i -> ms.add(entries.get(i).genStaticConsumer(this)));
+		return ms;
+	}
+	public List<MethodSpec> genStaticMappers(final FunctionalInterfaces fi) {
+		final List<MethodSpec> ms = new ArrayList<>(entries.size() + 1);
+		// Full element list mappers
+		ms.add(MethodSpec.methodBuilder("map")
+				.addTypeVariables(Data.append(Arrays.asList(genericArgs), Generic.R.varTypeName()))
+				.returns(ParameterizedTypeName.get(
+						ClassName.get(Function.class),
+						nameWithGenerics,
+						Generic.R.varTypeName()))
+				.addParameter(ParameterSpec.builder(
+								fi.parameterizedMapper(genericArgs, Generic.R.varTypeName()), "fn", Modifier.FINAL)
+						.build())
+				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+				.addStatement("return tuple -> tuple.map(fn)")
+				.build());
+		// Single argument mappers
+		idx().forEach(i -> {
+
+			final TupleEntry entry = entries.get(i);
+
+			final TypeName returnType;
+			if (nameWithGenerics instanceof ParameterizedTypeName pType) {
+				final TypeVariableName[] genericArgs = idx()
+						.filter(j -> entries.get(j).isObj())
+						.mapToObj(j -> {
+							if (i == j) return Generic.R.varTypeName();
+							else return entryTypes.get(j);
+						})
+						.toArray(TypeVariableName[]::new);
+				returnType = ParameterizedTypeName.get(pType.rawType(), genericArgs);
+			} else {
+				returnType = nameWithGenerics;
+			}
+//			// Full arg list
+//			final ParameterSpec fullMapperArg;
+//			{
+//				final TypeName mapperFunctionalType;
+//				if (isFullyPrimitive()) {
+//					mapperFunctionalType = fi.primitiveTypeOperators().get(entry.type());
+//				} else {
+//					if (entry.isObj()) {
+//						mapperFunctionalType = fi.parameterizedMapper(genericArgs, Generic.R.varTypeName());
+//					} else {
+//						mapperFunctionalType = ParameterizedTypeName.get(
+//								fi.primitiveTypeOperators().get(entry.type()),
+//								genericArgs);
+//					}
+//				}
+//				fullMapperArg = ParameterSpec
+//						.builder(mapperFunctionalType, "fn", Modifier.FINAL)
+//						.build();
+//			}
+
+			ms.add(entries.get(i).genStaticFullArgListMapper(this, returnType));
+		});
 		return ms;
 	}
 
@@ -269,7 +364,7 @@ public record Tuple(
 			}
 			params.add(ParameterSpec.builder(argType, "stream" + g.name(), Modifier.FINAL).build());
 		}
-		
+
 		final TypeName returns = ParameterizedTypeName.get(
 				ClassName.get(Stream.class),
 				nameWithGenerics);

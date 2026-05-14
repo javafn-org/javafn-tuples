@@ -31,6 +31,8 @@ public class GenerateTuples {
             ClassName.LONG, "Long",
             ClassName.DOUBLE, "Double");
 
+    record TupleFunctionalInterfaces(Tuple tuple, FunctionalInterfaces fi) {}
+
     public static void main(String[] args) throws IOException {
         final File out = new File("build/generated/main/java");
         if (!out.exists()) {
@@ -51,9 +53,18 @@ public class GenerateTuples {
                 .map(l -> Data.append(l, List.of(ClassName.OBJECT, ClassName.OBJECT)))
                 .toList();
 
-        final List<Tuple> pairs = tuples2.stream().map(Tuple::of).toList();
-        final List<Tuple> trios = tuples3.stream().map(Tuple::of).toList();
-        final List<Tuple> quads = tuples4.stream().map(Tuple::of).toList();
+        final List<TupleFunctionalInterfaces> pairs = tuples2.stream()
+                .map(Tuple::of)
+                .map(t -> new TupleFunctionalInterfaces(t, FunctionalInterfaces.of(t)))
+                .toList();
+        final List<TupleFunctionalInterfaces> trios = tuples3.stream()
+                .map(Tuple::of)
+                .map(t -> new TupleFunctionalInterfaces(t, FunctionalInterfaces.of(t)))
+                .toList();
+        final List<TupleFunctionalInterfaces> quads = tuples4.stream()
+                .map(Tuple::of)
+                .map(t -> new TupleFunctionalInterfaces(t, FunctionalInterfaces.of(t)))
+                .toList();
 
         Stream.of(pairs, trios, quads)
                 .flatMap(List::stream)
@@ -66,11 +77,13 @@ public class GenerateTuples {
                 });
 
         genHelper(out, TupleType.Pair, pairs);
+        genHelper(out, TupleType.Trio, trios);
+        genHelper(out, TupleType.Quad, quads);
     }
 
-    static void genTuple(final File packageDir, final Tuple tuple) throws IOException {
-
-        final FunctionalInterfaces fi = FunctionalInterfaces.of(tuple);
+    static void genTuple(final File packageDir, final TupleFunctionalInterfaces tfi) throws IOException {
+        final Tuple tuple = tfi.tuple;
+        final FunctionalInterfaces fi = tfi.fi;
 
         final TypeSpec.Builder tupleClassBuilder = TypeSpec.recordBuilder(tuple.name())
                 .addModifiers(Modifier.PUBLIC)
@@ -92,7 +105,7 @@ public class GenerateTuples {
                 .writeTo(packageDir);
     }
 
-    static void genHelper(final File packageDir, final TupleType type, List<Tuple> tuples) throws IOException {
+    static void genHelper(final File packageDir, final TupleType type, List<TupleFunctionalInterfaces> tfis) throws IOException {
 
         final TypeSpec.Builder tupleHelperBuilder = TypeSpec.classBuilder(type.name() + "s")
                 .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
@@ -100,8 +113,13 @@ public class GenerateTuples {
                         .addModifiers(Modifier.PRIVATE)
                         .addStatement("throw new $T(\"This is a static helper class and should never be instantiated.\")", IllegalStateException.class)
                         .build());
-        for (final Tuple tuple : tuples) {
-            tupleHelperBuilder.addMethod(tuple.genZipper());
+        for (final TupleFunctionalInterfaces tfi : tfis) {
+            final Tuple tuple = tfi.tuple;
+            final FunctionalInterfaces fi = tfi.fi;
+            tupleHelperBuilder.addMethod(tuple.genZipper())
+                    .addMethods(tuple.genStaticPredicates(fi))
+                    .addMethods(tuple.genStaticConsumers(fi))
+                    .addMethods(tuple.genStaticMappers(fi));
         }
 //                .addMethod()
 //                .addMethods(tuple.genPredicates(fi))
