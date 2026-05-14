@@ -6,6 +6,7 @@ import com.palantir.javapoet.ParameterSpec;
 import com.palantir.javapoet.ParameterizedTypeName;
 import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeVariableName;
+import org.javafn.tupleGen.Util.Generic;
 import org.javafn.tupleGen.Util.MapperType;
 
 import javax.lang.model.element.Modifier;
@@ -30,8 +31,6 @@ import static org.javafn.tupleGen.GenerateTuples.SUPPORTED_TYPES;
 import static org.javafn.tupleGen.Util.DOUBLE_ARG_FIELD;
 import static org.javafn.tupleGen.Util.INT_ARG_FIELD;
 import static org.javafn.tupleGen.Util.LONG_ARG_FIELD;
-import static org.javafn.tupleGen.Util.MAP_RETURN_FIELD;
-import static org.javafn.tupleGen.Util.MAP_RETURN_TYPE;
 import static org.javafn.tupleGen.Util.TYPE_MAPPERS;
 
 public interface TupleEntry {
@@ -73,7 +72,7 @@ public interface TupleEntry {
 	}
 	default MethodSpec genFullArgListMapper(Tuple tuple, TypeName returnType, ParameterSpec fullArgList) {
 		return MethodSpec.methodBuilder("map" + (index() + 1))
-				.addTypeVariable(MAP_RETURN_TYPE)
+				.addTypeVariable(Generic.R.varTypeName())
 				.returns(returnType)
 				.addParameter(fullArgList)
 				.addModifiers(Modifier.PUBLIC)
@@ -92,7 +91,7 @@ public interface TupleEntry {
 
 	static TupleEntry of(final TypeName type, final int i) {
 		if (type.equals(ClassName.OBJECT)) {
-			return new ObjectType(i, TypeVariableName.get("V" + (i + 1)));
+			return new ObjectType(i, Generic.v(i));
 		} else if (type.equals(TypeName.INT)) {
 			return new IntType(i);
 		} else if (type.equals(TypeName.LONG)) {
@@ -104,21 +103,22 @@ public interface TupleEntry {
 		}
 	}
 
-	record ObjectType(int index, TypeVariableName varTypeName) implements TupleEntry {
+	record ObjectType(int index, Generic generic) implements TupleEntry {
 
 		@Override public String typeName() { return "Obj"; }
 		@Override public TypeName type() {
 			return ClassName.OBJECT;
 		}
+		@Override public TypeVariableName varTypeName() { return generic.varTypeName(); }
 		@Override public boolean isObj() { return true; }
 		@Override public ParameterSpec paramSpec(final Modifier... modifiers) {
-			return ParameterSpec.builder(varTypeName, "v" + (index +1), modifiers).build();
+			return ParameterSpec.builder(generic.varTypeName(), generic.fieldName(), modifiers).build();
 		}
 		@Override public TypeName predicateName() {
-			return ParameterizedTypeName.get(ClassName.get(Predicate.class), varTypeName);
+			return ParameterizedTypeName.get(ClassName.get(Predicate.class), generic.varTypeName());
 		}
 		@Override public TypeName consumerName() {
-			return ParameterizedTypeName.get(ClassName.get(Consumer.class), varTypeName);
+			return ParameterizedTypeName.get(ClassName.get(Consumer.class), generic.varTypeName());
 		}
 		@Override public TypeName mapper(final ClassName toType) {
 			final var mapper = TYPE_MAPPERS.get(ClassName.OBJECT).get(toType);
@@ -126,24 +126,24 @@ public interface TupleEntry {
 			if (toType.isPrimitive()) {
 				return mapper.fn();
 			} else {
-				return ParameterizedTypeName.get(mapper.fn(), varTypeName, toType);
+				return ParameterizedTypeName.get(mapper.fn(), generic.varTypeName(), toType);
 			}
 		}
 		@Override public MethodSpec genSetter(final Tuple tuple) {
 			final MethodSpec.Builder methodBuilder = MethodSpec.methodBuilder("v" + (index + 1));
 			final List<ParameterSpec> argNames = new ArrayList<>(tuple.entryFields());
-			argNames.set(index, Util.MAP_RETURN_FIELD.build());
+			argNames.set(index, Generic.R.parameter());
 			final TypeVariableName[] genericTypes = tuple.idx()
 					.filter(j -> tuple.entries().get(j).isObj())
 					.mapToObj(j -> {
-						if (index == j) return MAP_RETURN_TYPE;
+						if (index == j) return Generic.R.varTypeName();
 						else return tuple.entryTypes().get(j);
 					})
 					.toArray(TypeVariableName[]::new);
 			methodBuilder
-					.addTypeVariable(MAP_RETURN_TYPE)
+					.addTypeVariable(Generic.R.varTypeName())
 					.returns(ParameterizedTypeName.get(tuple.name(), genericTypes))
-					.addParameter(MAP_RETURN_FIELD.addModifiers(Modifier.FINAL).build())
+					.addParameter(Generic.R.parameter(Modifier.FINAL))
 					.addModifiers(Modifier.PUBLIC)
 					.addStatement("return $T.of($L)", tuple.name(), Tuple.argList(argNames))
 					.build();
@@ -151,7 +151,7 @@ public interface TupleEntry {
 		}
 		@Override public MethodSpec genFullArgListMapper(final Tuple tuple, final TypeName returnType, final ParameterSpec fullArgList) {
 			return MethodSpec.methodBuilder("map" + (index + 1))
-					.addTypeVariable(MAP_RETURN_TYPE)
+					.addTypeVariable(Generic.R.varTypeName())
 					.returns(returnType)
 					.addParameter(fullArgList)
 					.addModifiers(Modifier.PUBLIC)
@@ -167,10 +167,13 @@ public interface TupleEntry {
 		}
 		@Override public MethodSpec genSingleArgMapper(final Tuple tuple, final TypeName returnType) {
 			return MethodSpec.methodBuilder("map" + (index + 1))
-					.addTypeVariable(MAP_RETURN_TYPE)
+					.addTypeVariable(Generic.R.varTypeName())
 					.returns(returnType)
 					.addParameter(ParameterSpec.builder(
-							ParameterizedTypeName.get(ClassName.get(Function.class), varTypeName(), MAP_RETURN_TYPE),
+							ParameterizedTypeName.get(
+									ClassName.get(Function.class),
+									varTypeName(),
+									Generic.R.varTypeName()),
 							"fn", Modifier.FINAL)
 							.build())
 					.addStatement("$T.requireNonNull(fn)", Objects.class)

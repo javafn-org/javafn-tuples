@@ -8,6 +8,7 @@ import com.palantir.javapoet.ParameterizedTypeName;
 import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeSpec;
 import com.palantir.javapoet.TypeVariableName;
+import org.javafn.tupleGen.Tuple.TupleType;
 import org.javafn.utils.Data;
 
 import javax.lang.model.element.Modifier;
@@ -50,9 +51,12 @@ public class GenerateTuples {
                 .map(l -> Data.append(l, List.of(ClassName.OBJECT, ClassName.OBJECT)))
                 .toList();
 
-        Stream.of(tuples2, tuples3, tuples4)
+        final List<Tuple> pairs = tuples2.stream().map(Tuple::of).toList();
+        final List<Tuple> trios = tuples3.stream().map(Tuple::of).toList();
+        final List<Tuple> quads = tuples4.stream().map(Tuple::of).toList();
+
+        Stream.of(pairs, trios, quads)
                 .flatMap(List::stream)
-                .map(Tuple::of)
                 .forEach(tuple -> {
 	                try {
 		                genTuple(out, tuple);
@@ -60,6 +64,8 @@ public class GenerateTuples {
 		                throw new RuntimeException(e);
 	                }
                 });
+
+        genHelper(out, TupleType.Pair, pairs);
     }
 
     static void genTuple(final File packageDir, final Tuple tuple) throws IOException {
@@ -79,18 +85,6 @@ public class GenerateTuples {
                         .map(e -> e.genSetter(tuple))
                 .toList());
 
-        final TypeSpec.Builder tupleHelperBuilder = TypeSpec.classBuilder(tuple.helperName())
-                .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
-                .addMethod(MethodSpec.constructorBuilder()
-                        .addStatement("throw new $T(\"This is a static helper class and should never be instantiated.\")", IllegalStateException.class)
-                        .build())
-                .addMethods(tuple.genPredicates(fi))
-                .addMethods(tuple.genConsumers(fi))
-                .addMethods(tuple.genMappers(fi))
-                .addMethods(tuple.entries().stream()
-                        .map(e -> e.genSetter(tuple))
-                        .toList());
-
         customize(tupleClassBuilder, tuple);
 
         JavaFile.builder(PACKAGE_NAME, tupleClassBuilder.build())
@@ -98,8 +92,31 @@ public class GenerateTuples {
                 .writeTo(packageDir);
     }
 
+    static void genHelper(final File packageDir, final TupleType type, List<Tuple> tuples) throws IOException {
+
+        final TypeSpec.Builder tupleHelperBuilder = TypeSpec.classBuilder(type.name() + "s")
+                .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
+                .addMethod(MethodSpec.constructorBuilder()
+                        .addModifiers(Modifier.PRIVATE)
+                        .addStatement("throw new $T(\"This is a static helper class and should never be instantiated.\")", IllegalStateException.class)
+                        .build());
+        for (final Tuple tuple : tuples) {
+            tupleHelperBuilder.addMethod(tuple.genZipper());
+        }
+//                .addMethod()
+//                .addMethods(tuple.genPredicates(fi))
+//                .addMethods(tuple.genConsumers(fi))
+//                .addMethods(tuple.genMappers(fi))
+//                .addMethods(tuple.entries().stream()
+//                        .map(e -> e.genSetter(tuple))
+//                        .toList());
+        JavaFile.builder(PACKAGE_NAME, tupleHelperBuilder.build())
+                .build()
+                .writeTo(packageDir);
+    }
+
     static void customize(final TypeSpec.Builder tupleClassBuilder, final Tuple tuple) {
-        if ("Pair".equals(tuple.name().simpleName())) {
+        if (TupleType.Pair.name().equals(tuple.name().simpleName())) {
             // Pair type
             final TypeVariableName[] genericArgs = new TypeVariableName[]{
                     TypeVariableName.get("KEY"),

@@ -65,7 +65,7 @@ public record FunctionalInterfaces(
 
 		final List<TypeVariableName> mapperGenericArgs = new ArrayList<>(tuple.genericArgs().length + 1);
 		mapperGenericArgs.addAll(List.of(tuple.genericArgs()));
-		mapperGenericArgs.add(Util.MAP_RETURN_TYPE);
+		mapperGenericArgs.add(Util.Generic.R.varTypeName());
 		newTypes.add(TypeSpec.interfaceBuilder(mapper)
 				.addAnnotation(FunctionalInterface.class)
 				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
@@ -73,7 +73,7 @@ public record FunctionalInterfaces(
 				.addMethod(MethodSpec.methodBuilder("apply")
 						.addModifiers(Modifier.PUBLIC, Modifier.ABSTRACT)
 						.addParameters(tuple.entryFields())
-						.returns(Util.MAP_RETURN_TYPE)
+						.returns(Util.Generic.R.varTypeName())
 						.build())
 				.build());
 
