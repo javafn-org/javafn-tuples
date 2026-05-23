@@ -1,6 +1,7 @@
 package org.javafn.tupleGen;
 
 import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.MethodSpec;
 import com.palantir.javapoet.MethodSpec.Builder;
 import com.palantir.javapoet.ParameterSpec;
@@ -14,12 +15,14 @@ import org.javafn.utils.Data;
 
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
+import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Spliterator;
 import java.util.Spliterators;
 import java.util.function.Consumer;
@@ -420,5 +423,84 @@ public record Tuple(
 				Spliterator.class);
 		return builder.build();
 	}
+
+	public List<MethodSpec> genChunks() {
+		final TypeName firstType = entries.get(0).type();
+        if (!entries.stream().map(TupleEntry::type).allMatch(firstType::equals)) {
+            return List.of();
+        }
+		final List<MethodSpec> chunkMethods = new ArrayList<>(2);
+		{
+			final MethodSpec.Builder builder = MethodSpec.methodBuilder("chunks")
+					.addModifiers(Modifier.STATIC, Modifier.PUBLIC);
+			if (ClassName.OBJECT.equals(firstType)) {
+				builder.addTypeVariable(Generic.A.varTypeName())
+						.returns(ParameterizedTypeName.get(ClassName.get(Stream.class),
+								ParameterizedTypeName.get(name,
+										idx().mapToObj(i -> Generic.A.varTypeName()).toArray(TypeVariableName[]::new))))
+						.addParameter(TypeVariableName.get(Generic.A.name() + "[]"), "a", Modifier.FINAL)
+						.addParameter(Generic.A.varTypeName(), "pad", Modifier.FINAL);
+			} else {
+				builder.returns(ParameterizedTypeName.get(ClassName.get(Stream.class), name))
+						.addParameter(TypeVariableName.get(firstType + "[]"), "a", Modifier.FINAL)
+						.addParameter(firstType, "pad", Modifier.FINAL);
+			}
+
+			final int numel = type.numel();
+
+			builder.addStatement("final int len = a.length")
+					.addStatement("final int nChunks = len / $L", numel)
+					.addStatement("final int nChunked = nChunks * $L", numel)
+					.addStatement("final int rem = len % $L", numel)
+					.addStatement("""
+							return Stream.concat(
+									IntStream.range(0, nChunks).map(i -> i * $L).mapToObj(i -> $T.of($L)),
+									rem == 0 ? Stream.empty() : Stream.of($T.of($L)))
+							""", numel, name,
+					idx().mapToObj(i -> i == 0 ? "a[i]" : "a[i + %d]".formatted(i)).collect(Collectors.joining(", ")),
+					name,
+					idx().mapToObj(i -> {
+						if (i == 0) {
+							return "a[nChunked]";
+						} else if (numel == i + 1) {
+							return "pad";
+						} else {
+							return "rem == %d ? a[nChunked + %d] : pad".formatted(i + 1, i);
+						}
+					}).collect(Collectors.joining(", ")));
+
+			chunkMethods.add(builder.build());
+		}
+		{
+			final MethodSpec.Builder builder = MethodSpec.methodBuilder("chunks")
+					.addModifiers(Modifier.STATIC, Modifier.PUBLIC);
+			if (ClassName.OBJECT.equals(firstType)) {
+				builder.addTypeVariable(Generic.A.varTypeName())
+						.returns(ParameterizedTypeName.get(ClassName.get(Stream.class),
+								ParameterizedTypeName.get(name,
+										idx().mapToObj(i -> Generic.A.varTypeName()).toArray(TypeVariableName[]::new))))
+						.addParameter(TypeVariableName.get(Generic.A.name() + "[]"), "a", Modifier.FINAL);
+			} else {
+				builder.returns(ParameterizedTypeName.get(ClassName.get(Stream.class), name))
+						.addParameter(TypeVariableName.get(firstType + "[]"), "a", Modifier.FINAL);
+			}
+
+			final int numel = type.numel();
+
+			builder.addStatement("final int len = a.length")
+					.beginControlFlow("if (len % $L != 0)", numel)
+					.addStatement("throw new IllegalArgumentException($S)",
+							"The number of elements must be divisible by %d; use the pad argument if you want the final item to contain padding".formatted(numel))
+					.endControlFlow()
+					.addStatement("return IntStream.range(0, len / $L).map(i -> i * $L).mapToObj(i -> $T.of($L))",
+							numel, numel, name,
+							idx().mapToObj(i -> i == 0 ? "a[i]" : "a[i + %d]".formatted(i)).collect(Collectors.joining(", ")));
+
+			chunkMethods.add(builder.build());
+		}
+
+		return chunkMethods;
+    }
+
 
 }

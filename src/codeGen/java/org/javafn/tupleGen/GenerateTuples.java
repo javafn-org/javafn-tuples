@@ -120,14 +120,9 @@ public class GenerateTuples {
                     .addMethods(tuple.genStaticPredicates(fi))
                     .addMethods(tuple.genStaticConsumers(fi))
                     .addMethods(tuple.genStaticMappers(fi));
+            tuple.genChunks().forEach(tupleHelperBuilder::addMethod);
         }
-//                .addMethod()
-//                .addMethods(tuple.genPredicates(fi))
-//                .addMethods(tuple.genConsumers(fi))
-//                .addMethods(tuple.genMappers(fi))
-//                .addMethods(tuple.entries().stream()
-//                        .map(e -> e.genSetter(tuple))
-//                        .toList());
+
         JavaFile.builder(PACKAGE_NAME, tupleHelperBuilder.build())
                 .build()
                 .writeTo(packageDir);
