@@ -1,6 +1,7 @@
 package org.javafn.tupleGen;
 
 import com.palantir.javapoet.ClassName;
+import com.palantir.javapoet.FieldSpec;
 import com.palantir.javapoet.JavaFile;
 import com.palantir.javapoet.MethodSpec;
 import com.palantir.javapoet.ParameterSpec;
@@ -9,6 +10,7 @@ import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeSpec;
 import com.palantir.javapoet.TypeVariableName;
 import org.javafn.tupleGen.Tuple.TupleType;
+import org.javafn.tupleGen.Util.Generic;
 import org.javafn.utils.Data;
 
 import javax.lang.model.element.Modifier;
@@ -19,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -124,7 +127,11 @@ public class GenerateTuples {
                     .addMethods(tuple.genStaticMappers(fi));
             tuple.genChunks().forEach(tupleHelperBuilder::addMethod);
             tuple.genWindows().ifPresent(tupleHelperBuilder::addMethod);
+            tuple.genPartition().ifPresent(tupleHelperBuilder::addMethod);
+            tuple.genStream().ifPresent(tupleHelperBuilder::addMethod);
         }
+
+        customizeHelper(tupleHelperBuilder, type);
 
         JavaFile.builder(PACKAGE_NAME, tupleHelperBuilder.build())
                 .build()
@@ -155,6 +162,53 @@ public class GenerateTuples {
                             TypeVariableName.get("?"),
                             ParameterizedTypeName.get(ClassName.get(Map.class), genericArgs)))
                     .addStatement("return $T.toMap(Pair::v1, Pair::v2)", Collectors.class)
+                    .build());
+        } else if ("Index".equals(tuple.name().simpleName())) {
+            final ClassName streamIndexerClassName = ClassName.get(PACKAGE_NAME, "Index", "StreamIndexer");
+            tupleClassBuilder.addType(TypeSpec.classBuilder(streamIndexerClassName)
+                    .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                    .addTypeVariable(Generic.A.varTypeName())
+                    .addField(FieldSpec.builder(TypeName.INT, "count", Modifier.PRIVATE).build())
+                    .addMethod(MethodSpec.methodBuilder("accept")
+                            .addModifiers(Modifier.PUBLIC)
+                            .addParameter(Generic.A.varTypeName(), "a", Modifier.FINAL)
+                            .returns(ParameterizedTypeName.get(tuple.name(), Generic.A.varTypeName()))
+                            .addStatement("return new Index<>(count++, a)")
+                            .build())
+                    .build());
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("of")
+                    .addModifiers(Modifier.STATIC, Modifier.PUBLIC)
+                    .addTypeVariable(Generic.A.varTypeName())
+                    .returns(ParameterizedTypeName.get(ClassName.get(Stream.class),
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Index"), Generic.A.varTypeName())))
+                    .addParameter(ParameterizedTypeName.get(ClassName.get(Stream.class), Generic.A.varTypeName()), "stream", Modifier.FINAL)
+                    .addStatement("return stream.map(new $T<A>()::accept)", streamIndexerClassName)
+                    .build());
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("i")
+                    .returns(TypeName.INT)
+                    .addModifiers(Modifier.PUBLIC)
+                    .addStatement("return v1")
+                    .build());
+        }
+    }
+    static void customizeHelper(final TypeSpec.Builder tupleClassBuilder, final TupleType tupleType) {
+        if (tupleType.equals(TupleType.Pair)) {
+            final ClassName streamIndexerClassName = ClassName.get(PACKAGE_NAME, "Index", "StreamIndexer");
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("index")
+                    .addModifiers(Modifier.STATIC, Modifier.PUBLIC)
+                    .addTypeVariable(Generic.A.varTypeName())
+                    .returns(ParameterizedTypeName.get(ClassName.get(Stream.class),
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Index"), Generic.A.varTypeName())))
+                    .addParameter(ParameterizedTypeName.get(ClassName.get(Stream.class), Generic.A.varTypeName()), "stream", Modifier.FINAL)
+                    .addStatement("return stream.map(new $T<A>()::accept)", streamIndexerClassName)
+                    .build());
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("index")
+                    .addModifiers(Modifier.STATIC, Modifier.PUBLIC)
+                    .addTypeVariable(Generic.A.varTypeName())
+                    .returns(ParameterizedTypeName.get(ClassName.get(Function.class),
+                            Generic.A.varTypeName(),
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Index"), Generic.A.varTypeName())))
+                    .addStatement("return new $T<A>()::accept", streamIndexerClassName)
                     .build());
         }
     }

@@ -1,9 +1,7 @@
 package org.javafn.tupleGen;
 
 import com.palantir.javapoet.ClassName;
-import com.palantir.javapoet.CodeBlock;
 import com.palantir.javapoet.MethodSpec;
-import com.palantir.javapoet.MethodSpec.Builder;
 import com.palantir.javapoet.ParameterSpec;
 import com.palantir.javapoet.ParameterizedTypeName;
 import com.palantir.javapoet.TypeName;
@@ -13,9 +11,7 @@ import org.javafn.tupleGen.TupleEntry.ObjectType;
 import org.javafn.tupleGen.Util.Generic;
 import org.javafn.utils.Data;
 
-import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
-import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -44,7 +40,8 @@ public record Tuple(
 		List<TupleEntry> entries,
 		List<TypeVariableName> entryTypes,
 		List<ParameterSpec> entryFields,
-		TypeVariableName[] genericArgs
+		TypeVariableName[] genericArgs,
+		boolean typesAreHomogeneous
 ) {
 	enum TupleType {
 		Pair,
@@ -68,9 +65,9 @@ public record Tuple(
 		}
 	}
 	static final Map<String, String> NAME_OVERRIDES = Map.of(
-			"ObjObjPair", "Pair",
-			"ObjObjObjTrio", "Trio",
-			"ObjObjObjObjQuad", "Quad",
+			"ObjPair", "Pair",
+			"ObjTrio", "Trio",
+			"ObjQuad", "Quad",
 			"IntObjPair", "Index");
 
 	static List<TupleEntry> toEntries(final List<TypeName> types) {
@@ -89,12 +86,21 @@ public record Tuple(
 		final TupleType type = TupleType.get(types.size());
 		final List<TupleEntry> entries = toEntries(types);
 		final ClassName name;
+		final boolean typesAreHomogeneous;
 		{
-			String tmp = entries.stream()
-					.map(TupleEntry::typeName)
-					.collect(Collectors.joining()) + type;
-			tmp = NAME_OVERRIDES.getOrDefault(tmp, tmp);
-			name = ClassName.get(GenerateTuples.PACKAGE_NAME, tmp);
+			final String nameTmp;
+			final String firstType = entries.get(0).typeName();
+			if (entries.stream().map(TupleEntry::typeName).allMatch(firstType::equals)) {
+				typesAreHomogeneous = true;
+				nameTmp = entries.get(0).typeName() + type;
+			} else {
+				typesAreHomogeneous = false;
+				nameTmp = entries.stream()
+						.map(TupleEntry::typeName)
+						.collect(Collectors.joining()) + type;
+			}
+
+			name = ClassName.get(GenerateTuples.PACKAGE_NAME, NAME_OVERRIDES.getOrDefault(nameTmp, nameTmp));
 		}
 		final TypeVariableName[] genericArgs = entries.stream()
 				.filter(t -> t instanceof ObjectType)
@@ -105,7 +111,7 @@ public record Tuple(
 				entries,
 				entries.stream().map(TupleEntry::varTypeName).toList(),
 				entries.stream().map(TupleEntry::paramSpec).toList(),
-				genericArgs);
+				genericArgs, typesAreHomogeneous);
 	}
 
 	public boolean isFullyPrimitive() {
@@ -216,6 +222,17 @@ public record Tuple(
 						.build())
 				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
 				.addStatement("return tuple -> tuple.peek(fn)")
+				.build());
+		ms.add(MethodSpec.methodBuilder("consume")
+				.addTypeVariables(Arrays.asList(genericArgs))
+				.returns(ParameterizedTypeName.get(ClassName.get(Consumer.class), nameWithGenerics))
+				.addParameter(ParameterSpec.builder(
+								fi.parameterizedConsumer(genericArgs),
+								"fn",
+								Modifier.FINAL)
+						.build())
+				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+				.addStatement("return tuple -> tuple.consume(fn)")
 				.build());
 		// Single argument peekers
 		idx().forEach(i -> ms.add(entries.get(i).genStaticConsumer(this)));
@@ -406,15 +423,15 @@ public record Tuple(
 	}
 
 	public List<MethodSpec> genChunks() {
-		final TypeName firstType = entries.get(0).type();
-        if (!entries.stream().map(TupleEntry::type).allMatch(firstType::equals)) {
+        if (!typesAreHomogeneous) {
             return List.of();
         }
+		final TypeName types = entries.get(0).type();
 		final List<MethodSpec> chunkMethods = new ArrayList<>(2);
 		{
 			final MethodSpec.Builder builder = MethodSpec.methodBuilder("chunks")
 					.addModifiers(Modifier.STATIC, Modifier.PUBLIC);
-			if (ClassName.OBJECT.equals(firstType)) {
+			if (ClassName.OBJECT.equals(types)) {
 				builder.addTypeVariable(Generic.A.varTypeName())
 						.returns(ParameterizedTypeName.get(ClassName.get(Stream.class),
 								ParameterizedTypeName.get(name,
@@ -423,8 +440,8 @@ public record Tuple(
 						.addParameter(Generic.A.varTypeName(), "pad", Modifier.FINAL);
 			} else {
 				builder.returns(ParameterizedTypeName.get(ClassName.get(Stream.class), name))
-						.addParameter(TypeVariableName.get(firstType + "[]"), "a", Modifier.FINAL)
-						.addParameter(firstType, "pad", Modifier.FINAL);
+						.addParameter(TypeVariableName.get(types + "[]"), "a", Modifier.FINAL)
+						.addParameter(types, "pad", Modifier.FINAL);
 			}
 
 			final int numel = type.numel();
@@ -455,7 +472,7 @@ public record Tuple(
 		{
 			final MethodSpec.Builder builder = MethodSpec.methodBuilder("chunks")
 					.addModifiers(Modifier.STATIC, Modifier.PUBLIC);
-			if (ClassName.OBJECT.equals(firstType)) {
+			if (ClassName.OBJECT.equals(types)) {
 				builder.addTypeVariable(Generic.A.varTypeName())
 						.returns(ParameterizedTypeName.get(ClassName.get(Stream.class),
 								ParameterizedTypeName.get(name,
@@ -463,7 +480,7 @@ public record Tuple(
 						.addParameter(TypeVariableName.get(Generic.A.name() + "[]"), "a", Modifier.FINAL);
 			} else {
 				builder.returns(ParameterizedTypeName.get(ClassName.get(Stream.class), name))
-						.addParameter(TypeVariableName.get(firstType + "[]"), "a", Modifier.FINAL);
+						.addParameter(TypeVariableName.get(types + "[]"), "a", Modifier.FINAL);
 			}
 
 			final int numel = type.numel();
@@ -484,14 +501,14 @@ public record Tuple(
     }
 
 	public Optional<MethodSpec> genWindows() {
-		final TypeName firstType = entries.get(0).type();
-		if (!entries.stream().map(TupleEntry::type).allMatch(firstType::equals)) {
+		if (!typesAreHomogeneous) {
 			return Optional.empty();
 		}
 
+		final TypeName types = entries.get(0).type();
 		final MethodSpec.Builder builder = MethodSpec.methodBuilder("windows")
 				.addModifiers(Modifier.STATIC, Modifier.PUBLIC);
-		if (ClassName.OBJECT.equals(firstType)) {
+		if (ClassName.OBJECT.equals(types)) {
 			builder.addTypeVariable(Generic.A.varTypeName())
 					.returns(ParameterizedTypeName.get(ClassName.get(Stream.class),
 							ParameterizedTypeName.get(name,
@@ -499,17 +516,85 @@ public record Tuple(
 					.addParameter(TypeVariableName.get(Generic.A.name() + "[]"), "a", Modifier.FINAL);
 		} else {
 			builder.returns(ParameterizedTypeName.get(ClassName.get(Stream.class), name))
-					.addParameter(TypeVariableName.get(firstType + "[]"), "a", Modifier.FINAL);
+					.addParameter(TypeVariableName.get(types + "[]"), "a", Modifier.FINAL);
 		}
 
 		final int numel = type.numel();
 
 		builder.addStatement("return IntStream.range(0, a.length - $L).mapToObj(i -> $T.of($L))",
-				numel, name, idx()
+				numel - 1, name, idx()
 						.mapToObj(i -> i == 0 ? "a[i]" : "a[i + %d]".formatted(i))
 						.collect(Collectors.joining(", ")));
 
 		return Optional.of(builder.build());
 	}
 
+	public Optional<MethodSpec> genPartition() {
+		if (type.numel() > 2 || !typesAreHomogeneous) {
+			return Optional.empty();
+		}
+
+		final TypeName types = entries.get(0).type();
+		final ClassName streamer = STREAMERS.get(types);
+
+		final MethodSpec.Builder builder = MethodSpec.methodBuilder("partition")
+				.addModifiers(Modifier.STATIC, Modifier.PUBLIC);
+		final String builderGenericArgs;
+		if (ClassName.OBJECT.equals(types)) {
+			builder.addTypeVariable(Generic.A.varTypeName())
+					.returns(
+							ParameterizedTypeName.get(ClassName.get(GenerateTuples.PACKAGE_NAME, "Pair"),
+								ParameterizedTypeName.get(ClassName.get(Stream.class), Generic.A.varTypeName()),
+								ParameterizedTypeName.get(ClassName.get(Stream.class), Generic.A.varTypeName())))
+					.addParameter(ParameterizedTypeName.get(streamer, Generic.A.varTypeName()),
+							"stream", Modifier.FINAL)
+					.addParameter(ParameterizedTypeName.get(ClassName.get(Predicate.class), Generic.A.varTypeName()),
+							"fn", Modifier.FINAL);
+			builderGenericArgs = "<A>";
+		} else {
+			builder.returns(
+					ParameterizedTypeName.get(ClassName.get(GenerateTuples.PACKAGE_NAME, "Pair"),
+							streamer, streamer))
+					.addParameter(streamer, "stream", Modifier.FINAL)
+					.addParameter(entries.get(0).predicateName(), "fn", Modifier.FINAL);
+			builderGenericArgs = "";
+		}
+
+		builder.addStatement("final $T.Builder$L trueStream = $T.builder()", streamer, builderGenericArgs, streamer)
+				.addStatement("final $T.Builder$L falseStream = $T.builder()", streamer, builderGenericArgs, streamer)
+				.addStatement("""
+						stream.forEach(a -> {
+							if (fn.test(a)) trueStream.add(a);
+							else falseStream.add(a);
+						})
+						""")
+				.addStatement("return Pair.of(trueStream.build(), falseStream.build())");
+		return Optional.of(builder.build());
+	}
+
+	public Optional<MethodSpec> genStream() {
+		if (!typesAreHomogeneous) {
+			return Optional.empty();
+		}
+
+		final TypeName types = entries.get(0).type();
+		final ClassName streamer = STREAMERS.get(types);
+
+		final MethodSpec.Builder builder = MethodSpec.methodBuilder("stream")
+				.addModifiers(Modifier.STATIC, Modifier.PUBLIC);
+		if (ClassName.OBJECT.equals(types)) {
+			builder.addTypeVariable(Generic.A.varTypeName())
+					.returns(ParameterizedTypeName.get(streamer, Generic.A.varTypeName()))
+					.addParameter(ParameterSpec.builder(
+							ParameterizedTypeName.get(name, idx().mapToObj(i -> Generic.A.varTypeName()).toArray(TypeVariableName[]::new)),
+							"tuple", Modifier.FINAL).build());
+		} else {
+			builder.returns(streamer)
+					.addParameter(name, "tuple", Modifier.FINAL);
+		}
+
+		builder.addStatement("return $T.of($L)", streamer,
+				idx().mapToObj(i -> "tuple.v%d()".formatted(i + 1)).collect(Collectors.joining(", ")));
+		return Optional.of(builder.build());
+	}
 }
