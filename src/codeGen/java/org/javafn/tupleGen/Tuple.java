@@ -502,5 +502,33 @@ public record Tuple(
 		return chunkMethods;
     }
 
+	public Optional<MethodSpec> genWindows() {
+		final TypeName firstType = entries.get(0).type();
+		if (!entries.stream().map(TupleEntry::type).allMatch(firstType::equals)) {
+			return Optional.empty();
+		}
+
+		final MethodSpec.Builder builder = MethodSpec.methodBuilder("windows")
+				.addModifiers(Modifier.STATIC, Modifier.PUBLIC);
+		if (ClassName.OBJECT.equals(firstType)) {
+			builder.addTypeVariable(Generic.A.varTypeName())
+					.returns(ParameterizedTypeName.get(ClassName.get(Stream.class),
+							ParameterizedTypeName.get(name,
+									idx().mapToObj(i -> Generic.A.varTypeName()).toArray(TypeVariableName[]::new))))
+					.addParameter(TypeVariableName.get(Generic.A.name() + "[]"), "a", Modifier.FINAL);
+		} else {
+			builder.returns(ParameterizedTypeName.get(ClassName.get(Stream.class), name))
+					.addParameter(TypeVariableName.get(firstType + "[]"), "a", Modifier.FINAL);
+		}
+
+		final int numel = type.numel();
+
+		builder.addStatement("return IntStream.range(0, a.length - $L).mapToObj(i -> $T.of($L))",
+				numel, name, idx()
+						.mapToObj(i -> i == 0 ? "a[i]" : "a[i + %d]".formatted(i))
+						.collect(Collectors.joining(", ")));
+
+		return Optional.of(builder.build());
+	}
 
 }

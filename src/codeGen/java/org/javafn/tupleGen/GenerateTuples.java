@@ -121,6 +121,7 @@ public class GenerateTuples {
                     .addMethods(tuple.genStaticConsumers(fi))
                     .addMethods(tuple.genStaticMappers(fi));
             tuple.genChunks().forEach(tupleHelperBuilder::addMethod);
+            tuple.genWindows().ifPresent(tupleHelperBuilder::addMethod);
         }
 
         JavaFile.builder(PACKAGE_NAME, tupleHelperBuilder.build())
