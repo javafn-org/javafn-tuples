@@ -72,7 +72,7 @@ public interface TupleEntry {
 								"fn",
 								Modifier.FINAL)
 						.build())
-				.addModifiers(Modifier.PUBLIC)
+				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
 				.addStatement("return tuple -> tuple.$L(fn)", memberMethodName)
 				.build();
 	}
@@ -205,6 +205,7 @@ public interface TupleEntry {
 			return MethodSpec.methodBuilder("map" + (index + 1))
 					.addTypeVariable(Generic.R.varTypeName())
 					.returns(returnType)
+					.addModifiers(Modifier.PUBLIC)
 					.addParameter(ParameterSpec.builder(
 							ParameterizedTypeName.get(
 									ClassName.get(Function.class),
@@ -395,6 +396,7 @@ public interface TupleEntry {
 		}
 
 		return MethodSpec.methodBuilder("map" + (index + 1) + "To" + SUPPORTED_TYPES.get(toType))
+				.addModifiers(Modifier.PUBLIC)
 				.addTypeVariables(newGenericTypes)
 				.returns(newTuple.nameWithGenerics())
 				.addParameter(ParameterSpec.builder(paramType, "fn", Modifier.FINAL).build())

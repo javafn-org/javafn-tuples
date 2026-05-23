@@ -19,6 +19,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class GenerateTuples {
@@ -137,12 +139,22 @@ public class GenerateTuples {
                     TypeVariableName.get("VAL")};
             tupleClassBuilder.addMethod(MethodSpec.methodBuilder("from")
                     .addTypeVariables(Arrays.asList(genericArgs))
+                    .addModifiers(Modifier.PUBLIC)
                     .addParameter(ParameterSpec.builder(
                             ParameterizedTypeName.get(ClassName.get(Entry.class), genericArgs),
                             "e", Modifier.FINAL).build())
                     .returns(ParameterizedTypeName.get(tuple.name(), genericArgs))
-                            .addStatement("$T.requireNonNull(e)", Objects.class)
-                            .addStatement("return new $T<>(e.getKey(), e.getValue())", tuple.name())
+                    .addStatement("$T.requireNonNull(e)", Objects.class)
+                    .addStatement("return new $T<>(e.getKey(), e.getValue())", tuple.name())
+                    .build());
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("toMap")
+                    .addTypeVariables(Arrays.asList(genericArgs))
+                    .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                    .returns(ParameterizedTypeName.get(ClassName.get(Collector.class),
+                            ParameterizedTypeName.get(tuple.name(), genericArgs),
+                            TypeVariableName.get("?"),
+                            ParameterizedTypeName.get(ClassName.get(Map.class), genericArgs)))
+                    .addStatement("return $T.toMap(Pair::v1, Pair::v2)", Collectors.class)
                     .build());
         }
     }

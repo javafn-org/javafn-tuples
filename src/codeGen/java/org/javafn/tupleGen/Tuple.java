@@ -254,25 +254,6 @@ public record Tuple(
 			} else {
 				returnType = nameWithGenerics;
 			}
-//			// Full arg list
-//			final ParameterSpec fullMapperArg;
-//			{
-//				final TypeName mapperFunctionalType;
-//				if (isFullyPrimitive()) {
-//					mapperFunctionalType = fi.primitiveTypeOperators().get(entry.type());
-//				} else {
-//					if (entry.isObj()) {
-//						mapperFunctionalType = fi.parameterizedMapper(genericArgs, Generic.R.varTypeName());
-//					} else {
-//						mapperFunctionalType = ParameterizedTypeName.get(
-//								fi.primitiveTypeOperators().get(entry.type()),
-//								genericArgs);
-//					}
-//				}
-//				fullMapperArg = ParameterSpec
-//						.builder(mapperFunctionalType, "fn", Modifier.FINAL)
-//						.build();
-//			}
 
 			ms.add(entries.get(i).genStaticFullArgListMapper(this, returnType));
 		});
