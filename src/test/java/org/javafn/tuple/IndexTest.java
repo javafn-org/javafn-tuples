@@ -48,16 +48,16 @@ public class IndexTest {
 					i, indexList.get(i).i());
 		}
 	}
-//	@Test
-//	public void testCorrectIndexMapBoth() {
-//		final int numItems = 100;
-//		final List<Index<String>> indexList =  Stream.generate(UUID::randomUUID).limit(numItems)
-//				.map(Pairs.index())
-//				.map(Pairs.map( (int i, UUID val) -> val.toString()))
-//				.toList();
-//		for (int i = 0; i < numItems; i++) {
-//			assertEquals("Expected the list index and Idx.i() values to be the same",
-//					i, indexList.get(i).i());
-//		}
-//	}
+	@Test
+	public void testCorrectIndexMapBoth() {
+		final int numItems = 100;
+		final List<Index<String>> indexList =  Stream.generate(UUID::randomUUID).limit(numItems)
+				.map(Pairs.index())
+				.map(Pairs.mapIO2((i, val) -> val.toString()))
+				.toList();
+		for (int i = 0; i < numItems; i++) {
+			assertEquals("Expected the list index and Idx.i() values to be the same",
+					i, indexList.get(i).i());
+		}
+	}
 }

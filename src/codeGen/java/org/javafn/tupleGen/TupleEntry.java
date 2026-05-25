@@ -35,7 +35,12 @@ import static org.javafn.tupleGen.Util.INT_ARG_FIELD;
 import static org.javafn.tupleGen.Util.LONG_ARG_FIELD;
 import static org.javafn.tupleGen.Util.TYPE_MAPPERS;
 
-public interface TupleEntry {
+public sealed interface TupleEntry permits
+		TupleEntry.ObjectType,
+		TupleEntry.IntType,
+		TupleEntry.LongType,
+		TupleEntry.DoubleType
+{
 	int index();
 	String typeName();
 	TypeName type();
@@ -60,7 +65,7 @@ public interface TupleEntry {
 				.build();
 	}
 	default MethodSpec genStaticPredicate(final Tuple tuple) {
-		final String qualifier = getQualifier(tuple);
+		final String qualifier = Util.getQualifier(tuple);
 		final String staticMethodName = "matches" + qualifier + (index() + 1);
 		final String memberMethodName = "matches" + (index() + 1);
 		return MethodSpec.methodBuilder(staticMethodName)
@@ -90,7 +95,7 @@ public interface TupleEntry {
 				.build();
 	}
 	default MethodSpec genStaticConsumer(final Tuple tuple) {
-		final String qualifier = getQualifier(tuple);
+		final String qualifier = Util.getQualifier(tuple);
 		final String staticMethodName = "peek" + qualifier + (index() + 1);
 		final String memberMethodName = "peek" + (index() + 1);
 		return MethodSpec.methodBuilder(staticMethodName)
@@ -104,7 +109,6 @@ public interface TupleEntry {
 				.addStatement("return tuple -> tuple.$L(fn)", memberMethodName)
 				.build();
 	}
-	MethodSpec genStaticFullArgListMapper(Tuple tuple, TypeName returnType);
 	default MethodSpec genFullArgListMapper(Tuple tuple, TypeName returnType, ParameterSpec fullArgList) {
 		return MethodSpec.methodBuilder("map" + (index() + 1))
 				.addTypeVariable(Generic.R.varTypeName())
@@ -121,8 +125,11 @@ public interface TupleEntry {
 						}).collect(Collectors.joining(", ")))
 				.build();
 	}
+	MethodSpec genStaticFullArgMapper(Tuple tuple, TypeName returnType, ParameterSpec fullArgList);
 	MethodSpec genSingleArgMapper(Tuple tuple, TypeName returnType);
 	MethodSpec genSingleArgMapperTo(Tuple tuple, TypeName toType);
+	MethodSpec genStaticSingleArgMapper(Tuple tuple, TypeName returnType);
+	MethodSpec genStaticSingleArgMapperTo(Tuple tuple, TypeName toType);
 
 	static TupleEntry of(final TypeName type, final int i) {
 		if (type.equals(ClassName.OBJECT)) {
@@ -223,12 +230,18 @@ public interface TupleEntry {
 							}).collect(Collectors.joining(", ")))
 					.build();
 		}
-		@Override public MethodSpec genStaticFullArgListMapper(final Tuple tuple, final TypeName returnType) {
-			return genStaticFullArgMapper(tuple, index, returnType, mapper(Generic.R.varTypeName()), List.of(Generic.R.varTypeName()));
+		@Override public MethodSpec genStaticFullArgMapper(final Tuple tuple, final TypeName returnType, final ParameterSpec fullArgMapper) {
+			return _genStaticFullArgMapper(tuple, index, returnType, fullArgMapper, List.of(Generic.R.varTypeName()));
 		}
 
 		@Override public MethodSpec genSingleArgMapperTo(final Tuple tuple, final TypeName toType) {
-			return TupleEntry.genPrimitiveSingleArgMapper(tuple, index, ClassName.OBJECT, toType);
+			return _genSingleArgMapperTo(tuple, index, ClassName.OBJECT, toType);
+		}
+		@Override public MethodSpec genStaticSingleArgMapper(final Tuple tuple, final TypeName returnType) {
+			return _genStaticSingleArgMapper(tuple, index, mapper(Generic.R.varTypeName()), returnType, List.of(Generic.R.varTypeName()));
+		}
+		@Override public MethodSpec genStaticSingleArgMapperTo(Tuple tuple, TypeName toType) {
+			return _genStaticSingleArgMapperTo(tuple, index, ClassName.OBJECT, toType);
 		}
 	}
 
@@ -255,13 +268,19 @@ public interface TupleEntry {
 			return genPrimitiveSetter(tuple, index, INT_ARG_FIELD);
 		}
 		@Override public MethodSpec genSingleArgMapper(final Tuple tuple, final TypeName returnType) {
-			return TupleEntry.genPrimitiveMapper(tuple, index, IntUnaryOperator.class, returnType, "applyAsInt");
+			return genPrimitiveSingleArgMapper(tuple, index, IntUnaryOperator.class, returnType, "applyAsInt");
 		}
 		@Override public MethodSpec genSingleArgMapperTo(final Tuple tuple, final TypeName toType) {
-			return TupleEntry.genPrimitiveSingleArgMapper(tuple, index, TypeName.INT, toType);
+			return _genSingleArgMapperTo(tuple, index, TypeName.INT, toType);
 		}
-		@Override public MethodSpec genStaticFullArgListMapper(Tuple tuple, TypeName returnType) {
-			return genStaticFullArgMapper(tuple, index, returnType, mapper(ClassName.INT), List.of());
+		@Override public MethodSpec genStaticFullArgMapper(final Tuple tuple, final TypeName returnType, final ParameterSpec fullArgMapper) {
+			return _genStaticFullArgMapper(tuple, index, returnType, fullArgMapper, List.of());
+		}
+		@Override public MethodSpec genStaticSingleArgMapper(final Tuple tuple, final TypeName returnType) {
+			return TupleEntry._genStaticSingleArgMapper(tuple, index, ClassName.get(IntUnaryOperator.class), returnType, List.of());
+		}
+		@Override public MethodSpec genStaticSingleArgMapperTo(Tuple tuple, TypeName toType) {
+			return _genStaticSingleArgMapperTo(tuple, index, ClassName.INT, toType);
 		}
 	}
 
@@ -288,13 +307,19 @@ public interface TupleEntry {
 		}
 
 		@Override public MethodSpec genSingleArgMapper(final Tuple tuple, final TypeName returnType) {
-			return TupleEntry.genPrimitiveMapper(tuple, index, LongUnaryOperator.class, returnType, "applyAsLong");
+			return genPrimitiveSingleArgMapper(tuple, index, LongUnaryOperator.class, returnType, "applyAsLong");
 		}
 		@Override public MethodSpec genSingleArgMapperTo(final Tuple tuple, final TypeName toType) {
-			return TupleEntry.genPrimitiveSingleArgMapper(tuple, index, ClassName.LONG, toType);
+			return _genSingleArgMapperTo(tuple, index, ClassName.LONG, toType);
 		}
-		@Override public MethodSpec genStaticFullArgListMapper(final Tuple tuple, final TypeName returnType) {
-			return genStaticFullArgMapper(tuple, index, returnType, mapper(ClassName.LONG), List.of());
+		@Override public MethodSpec genStaticFullArgMapper(final Tuple tuple, final TypeName returnType, final ParameterSpec fullArgMapper) {
+			return _genStaticFullArgMapper(tuple, index, returnType, fullArgMapper, List.of());
+		}
+		@Override public MethodSpec genStaticSingleArgMapper(final Tuple tuple, final TypeName returnType) {
+			return _genStaticSingleArgMapper(tuple, index, ClassName.get(LongUnaryOperator.class), returnType, List.of());
+		}
+		@Override public MethodSpec genStaticSingleArgMapperTo(Tuple tuple, TypeName toType) {
+			return _genStaticSingleArgMapperTo(tuple, index, ClassName.LONG, toType);
 		}
 	}
 
@@ -320,13 +345,19 @@ public interface TupleEntry {
 			return genPrimitiveSetter(tuple, index, DOUBLE_ARG_FIELD);
 		}
 		@Override public MethodSpec genSingleArgMapper(final Tuple tuple, final TypeName returnType) {
-			return TupleEntry.genPrimitiveMapper(tuple, index, DoubleUnaryOperator.class, returnType, "applyAsDouble");
+			return TupleEntry.genPrimitiveSingleArgMapper(tuple, index, DoubleUnaryOperator.class, returnType, "applyAsDouble");
 		}
 		@Override public MethodSpec genSingleArgMapperTo(final Tuple tuple, final TypeName toType) {
-			return TupleEntry.genPrimitiveSingleArgMapper(tuple, index, ClassName.DOUBLE, toType);
+			return TupleEntry._genSingleArgMapperTo(tuple, index, ClassName.DOUBLE, toType);
 		}
-		@Override public MethodSpec genStaticFullArgListMapper(final Tuple tuple, final TypeName returnType) {
-			return genStaticFullArgMapper(tuple, index, returnType, mapper(ClassName.DOUBLE), List.of());
+		@Override public MethodSpec genStaticFullArgMapper(final Tuple tuple, final TypeName returnType, final ParameterSpec fullArgMapper) {
+			return _genStaticFullArgMapper(tuple, index, returnType, fullArgMapper, List.of());
+		}
+		@Override public MethodSpec genStaticSingleArgMapper(final Tuple tuple, final TypeName returnType) {
+			return _genStaticSingleArgMapper(tuple, index, ClassName.get(DoubleUnaryOperator.class), returnType, List.of());
+		}
+		@Override public MethodSpec genStaticSingleArgMapperTo(Tuple tuple, TypeName toType) {
+			return _genStaticSingleArgMapperTo(tuple, index, ClassName.DOUBLE, toType);
 		}
 	}
 
@@ -345,7 +376,7 @@ public interface TupleEntry {
 		return methodBuilder.build();
 	}
 
-	private static MethodSpec genPrimitiveMapper(
+	private static MethodSpec genPrimitiveSingleArgMapper(
 			final Tuple tuple,
 			final int index,
 			final Class<?> operator,
@@ -353,6 +384,7 @@ public interface TupleEntry {
 			final String applyFnName) {
 		return MethodSpec.methodBuilder("map" + (index + 1))
 				.returns(returnType)
+				.addModifiers(Modifier.PUBLIC)
 				.addParameter(ParameterSpec.builder(
 								ClassName.get(operator),
 								"fn",
@@ -369,7 +401,7 @@ public interface TupleEntry {
 				.build();
 	}
 
-	private static MethodSpec genPrimitiveSingleArgMapper(
+	private static MethodSpec _genSingleArgMapperTo(
 			final Tuple tuple, final int index, final TypeName fromType, final TypeName toType) {
 		if (fromType.equals(toType)) throw new IllegalArgumentException();
 
@@ -410,34 +442,77 @@ public interface TupleEntry {
 						}).collect(Collectors.joining(", ")))
 				.build();
 	}
-	private static MethodSpec genStaticFullArgMapper(
+	private static MethodSpec _genStaticSingleArgMapper(
+			final Tuple tuple,
+			final int index,
+			final TypeName operator,
+			final TypeName returnType,
+			final List<TypeVariableName> extraTypeParams) {
+		final String qualifier = Util.getQualifier(tuple);
+		final String staticMethodName = "map" + qualifier + (index + 1);
+		final String memberMethodName = "map" + (index + 1);
+		return MethodSpec.methodBuilder(staticMethodName)
+				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+				.addTypeVariables(Data.append(Arrays.<TypeVariableName>asList(tuple.genericArgs()), extraTypeParams))
+				.returns(ParameterizedTypeName.get(ClassName.get(Function.class), tuple.nameWithGenerics(), returnType))
+				.addParameter(ParameterSpec.builder(operator, "fn", Modifier.FINAL).build())
+				.addStatement("return tuple -> tuple.$L(fn)", memberMethodName)
+				.build();
+	}
+	private static MethodSpec _genStaticSingleArgMapperTo(
+			final Tuple tuple, final int index, final TypeName fromType, final TypeName toType) {
+		if (fromType.equals(toType)) throw new IllegalArgumentException(fromType + " to " + toType + " in " + tuple.nameWithGenerics() + " : " + index);
+
+		final Tuple newTuple;
+		{
+			final ArrayList<TypeName> newTupleTypes = new ArrayList<>(tuple.entries().stream().map(TupleEntry::type).toList());
+			newTupleTypes.set(index, toType);
+			newTuple = Tuple.of(newTupleTypes);
+		}
+		final MapperType mapper = TYPE_MAPPERS.get(fromType).get(toType);
+		if (mapper == null) throw new IllegalArgumentException("Unexpected type " + toType);
+
+		final TypeName paramType;
+		final List<TypeVariableName> newGenericTypes;
+		if (ClassName.OBJECT.equals(fromType)) {
+			newGenericTypes = List.of();
+			paramType = ParameterizedTypeName.get(mapper.fn(), tuple.entries().get(index).varTypeName());
+		} else if (ClassName.OBJECT.equals(toType)) {
+			newGenericTypes = List.of(newTuple.entries().get(index).varTypeName());
+			paramType = ParameterizedTypeName.get(mapper.fn(), newGenericTypes.toArray(TypeName[]::new));
+		} else {
+			newGenericTypes = List.of();
+			paramType = mapper.fn();
+		}
+
+		final String qualifier = Util.getQualifier(tuple);
+		final String dstType = SUPPORTED_TYPES.get(toType);
+		final String staticMethodName = "map" + qualifier + (index + 1) + "To" + dstType;
+		final String memberMethodName = "map" + (index + 1) + "To" + dstType;
+		return MethodSpec.methodBuilder(staticMethodName)
+				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+				.addTypeVariables(Data.append(Arrays.<TypeVariableName>asList(tuple.genericArgs()), newGenericTypes))
+				.returns(ParameterizedTypeName.get(ClassName.get(Function.class), tuple.nameWithGenerics(), newTuple.nameWithGenerics()))
+				.addParameter(ParameterSpec.builder(paramType, "fn", Modifier.FINAL).build())
+				.addStatement("return tuple -> tuple.$L(fn)", memberMethodName)
+				.build();
+	}
+	private static MethodSpec _genStaticFullArgMapper(
 			final Tuple tuple,
 			final int index,
 			final TypeName returnType,
-			final TypeName mapperType,
+			final ParameterSpec fullArgMapper,
 			final List<TypeVariableName> extraTypeParams) {
-		final String qualifier = getQualifier(tuple);
+		final String qualifier = Util.getQualifier(tuple);
 		final String staticMethodName = "map" + qualifier + (index + 1);
 		final String memberMethodName = "map" + (index + 1);
 		return MethodSpec.methodBuilder(staticMethodName)
 				.addTypeVariables(Data.append(Arrays.<TypeVariableName>asList(tuple.genericArgs()), extraTypeParams))
 				.returns(ParameterizedTypeName.get(ClassName.get(Function.class), tuple.nameWithGenerics(), returnType))
-				.addParameter(ParameterSpec.builder(mapperType,
-								"fn",
-								Modifier.FINAL)
-						.build())
+				.addParameter(fullArgMapper)
 				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+				.addComment("In _genStaticFullArgMapper")
 				.addStatement("return tuple -> tuple.$L(fn)", memberMethodName)
 				.build();
-	}
-
-	private static String getQualifier(Tuple tuple) {
-		final String qualifier;
-		if (tuple.isFullyNonPrimitive()) {
-			qualifier = "";
-		} else {
-			qualifier = tuple.entries().stream().map(TupleEntry::typeName).map(n -> n.substring(0,1)).collect(Collectors.joining());
-		}
-		return qualifier;
 	}
 }

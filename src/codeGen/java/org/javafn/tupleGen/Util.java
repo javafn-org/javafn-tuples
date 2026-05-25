@@ -28,6 +28,7 @@ import java.util.function.LongUnaryOperator;
 import java.util.function.ToDoubleFunction;
 import java.util.function.ToIntFunction;
 import java.util.function.ToLongFunction;
+import java.util.stream.Collectors;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
@@ -115,5 +116,15 @@ public class Util {
 		return ClassName.get(PACKAGE_NAME,
 				tupleSimpleName,
 				tupleSimpleName + suffix);
+	}
+
+	public static String getQualifier(final Tuple tuple) {
+		final String qualifier;
+		if (tuple.isFullyNonPrimitive()) {
+			qualifier = "";
+		} else {
+			qualifier = tuple.entries().stream().map(TupleEntry::typeName).map(n -> n.substring(0,1)).collect(Collectors.joining());
+		}
+		return qualifier;
 	}
 }

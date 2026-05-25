@@ -32,6 +32,7 @@ import java.util.stream.StreamSupport;
 import static java.util.function.Predicate.not;
 import static org.javafn.tupleGen.Util.ITERATORS;
 import static org.javafn.tupleGen.Util.STREAMERS;
+import static org.javafn.tupleGen.Util.getQualifier;
 
 public record Tuple(
 		TupleType type,
@@ -223,7 +224,7 @@ public record Tuple(
 				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
 				.addStatement("return tuple -> tuple.peek(fn)")
 				.build());
-		ms.add(MethodSpec.methodBuilder("consume")
+		ms.add(MethodSpec.methodBuilder("consume" + getQualifier(this))
 				.addTypeVariables(Arrays.asList(genericArgs))
 				.returns(ParameterizedTypeName.get(ClassName.get(Consumer.class), nameWithGenerics))
 				.addParameter(ParameterSpec.builder(
@@ -239,16 +240,17 @@ public record Tuple(
 		return ms;
 	}
 	public List<MethodSpec> genStaticMappers(final FunctionalInterfaces fi) {
-		final List<MethodSpec> ms = new ArrayList<>(entries.size() + 1);
+		final List<MethodSpec> ms = new ArrayList<>();
 		// Full element list mappers
-		ms.add(MethodSpec.methodBuilder("map")
+		ms.add(MethodSpec.methodBuilder("map" + getQualifier(this))
 				.addTypeVariables(Data.append(Arrays.asList(genericArgs), Generic.R.varTypeName()))
 				.returns(ParameterizedTypeName.get(
 						ClassName.get(Function.class),
 						nameWithGenerics,
 						Generic.R.varTypeName()))
 				.addParameter(ParameterSpec.builder(
-								fi.parameterizedMapper(genericArgs, Generic.R.varTypeName()), "fn", Modifier.FINAL)
+						fi.parameterizedMapper(genericArgs, Generic.R.varTypeName()),
+						"fn", Modifier.FINAL)
 						.build())
 				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
 				.addStatement("return tuple -> tuple.map(fn)")
@@ -272,7 +274,35 @@ public record Tuple(
 				returnType = nameWithGenerics;
 			}
 
-			ms.add(entries.get(i).genStaticFullArgListMapper(this, returnType));
+			// Full arg list
+			final ParameterSpec fullMapperArg;
+			{
+				final TypeName mapperFunctionalType;
+				if (isFullyPrimitive()) {
+					mapperFunctionalType = fi.primitiveTypeOperators().get(entry.type());
+				} else {
+					if (entry.isObj()) {
+						mapperFunctionalType = fi.parameterizedMapper(genericArgs, Generic.R.varTypeName());
+					} else {
+						mapperFunctionalType = ParameterizedTypeName.get(
+								fi.primitiveTypeOperators().get(entry.type()),
+								genericArgs);
+					}
+				}
+				fullMapperArg = ParameterSpec
+						.builder(mapperFunctionalType, "fn", Modifier.FINAL)
+						.build();
+			}
+			ms.add(entry.genStaticFullArgMapper(this, returnType, fullMapperArg));
+
+			// Single arg list
+			ms.add(entry.genStaticSingleArgMapper(this, returnType));
+
+			if (i < 2) {
+				GenerateTuples.SUPPORTED_TYPES.keySet().stream()
+						.filter(not(t -> entry.type().equals(t)))
+						.forEach(toType -> ms.add(entry.genStaticSingleArgMapperTo(this, toType)));
+			}
 		});
 		return ms;
 	}
@@ -333,7 +363,7 @@ public record Tuple(
 			// Single arg
 			ms.add(entry.genSingleArgMapper(this, returnType));
 
-            if (type == TupleType.Pair) {
+            if (i < 2) {
 				GenerateTuples.SUPPORTED_TYPES.keySet().stream()
 						.filter(not(t -> entry.type().equals(t)))
 						.forEach(toType -> ms.add(entry.genSingleArgMapperTo(this, toType)));

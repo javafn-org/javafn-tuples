@@ -7,6 +7,7 @@ import org.javafn.tuples.IntPair;
 import org.javafn.tuples.LongPair;
 import org.javafn.tuples.Pair;
 import org.javafn.tuples.Pairs;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.UUID;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -145,6 +147,54 @@ public class PairTest {
                 pair.matches2(a -> a == 0));
     }
 
+    @Test public void testMatchesII() {
+        final IntPair pair = IntPair.of(0, 42);
+        assertTrue("Expecting pair.matches((a,b) -> a + b == 42) to return true",
+                pair.matches((a, b) -> a + b == 42));
+        assertFalse("Expecting pair.matches((a,b) -> a - b == 42) to return false",
+                pair.matches((a, b) -> a - b == 42));
+        assertTrue("Expecting pair.matches(a -> a == 0) to return true",
+                pair.matches1(a -> a == 0));
+        assertFalse("Expecting pair.matches(a -> a == 42) to return false",
+                pair.matches1(a -> a == 42));
+        assertTrue("Expecting pair.matches(a -> a == 42) to return true",
+                pair.matches2(a -> a == 42));
+        assertFalse("Expecting pair.matches(a -> a == 0) to return false",
+                pair.matches2(a -> a == 0));
+    }
+
+    @Test public void testMatchesLL() {
+        final LongPair pair = LongPair.of(0, 42);
+        assertTrue("Expecting pair.matches((a,b) -> a + b == 42) to return true",
+                pair.matches((a, b) -> a + b == 42));
+        assertFalse("Expecting pair.matches((a,b) -> a - b == 42) to return false",
+                pair.matches((a, b) -> a - b == 42));
+        assertTrue("Expecting pair.matches(a -> a == 0) to return true",
+                pair.matches1(a -> a == 0));
+        assertFalse("Expecting pair.matches(a -> a == 42) to return false",
+                pair.matches1(a -> a == 42));
+        assertTrue("Expecting pair.matches(a -> a == 42) to return true",
+                pair.matches2(a -> a == 42));
+        assertFalse("Expecting pair.matches(a -> a == 0) to return false",
+                pair.matches2(a -> a == 0));
+    }
+
+    @Test public void testMatchesDD() {
+        final DoublePair pair = DoublePair.of(0, 42);
+        assertTrue("Expecting pair.matches((a,b) -> a + b == 42) to return true",
+                pair.matches((a, b) -> a + b == 42));
+        assertFalse("Expecting pair.matches((a,b) -> a - b == 42) to return false",
+                pair.matches((a, b) -> a - b == 42));
+        assertTrue("Expecting pair.matches(a -> a == 0) to return true",
+                pair.matches1(a -> a == 0));
+        assertFalse("Expecting pair.matches(a -> a == 42) to return false",
+                pair.matches1(a -> a == 42));
+        assertTrue("Expecting pair.matches(a -> a == 42) to return true",
+                pair.matches2(a -> a == 42));
+        assertFalse("Expecting pair.matches(a -> a == 0) to return false",
+                pair.matches2(a -> a == 0));
+    }
+
     @Test public void testMap() {
         final String s = "Forty-Two";
         final Pair<Integer, String> orig = Pair.of(42, s);
@@ -158,6 +208,35 @@ public class PairTest {
                 Pair.of(42,  s + "42"), orig.map2((i, v) -> v + i));
         assertEquals("Expected map to have produced a new element",
                 42 + s, orig.map((i, v) -> i + v));
+    }
+
+    @Test public void testMapI() {
+        final String s = "Forty-Two";
+        final Index<String> orig = Index.of(42, s);
+        assertEquals("Expecting map1 to have affected the first element",
+                Index.of(-42, s), orig.map1( i -> i - 84));
+        assertEquals("Expecting map1 to have affected the first element",
+                Index.of(51, s), orig.map1((i, v) -> i + s.length()));
+        assertEquals("Expecting map2 to have affected the second element",
+                Index.of(42, s + "!"), orig.map2( v -> v + "!"));
+        assertEquals("Expecting map2 to have affected the second element",
+                Index.of(42,  s + "42"), orig.map2((i, v) -> v + i));
+        assertEquals("Expected map to have produced a new element",
+                42 + s, orig.map((i, v) -> i + v));
+    }
+
+    @Test public void testTypeInference() {
+        Stream.of(Pair.of("One", "Two"))
+                .map(Pairs.map1ToInt(v -> 42))
+                .map(Pairs.mapIO2ToLong(v -> 67))
+                .map(Pairs.mapIL((i, j) -> DoublePair.of((double) i / j, i * j)))
+                .map(Pairs.mapDD1ToObj(Double::toString))
+                .map(Pairs.mapOD2ToObj(Double::toHexString))
+                .findFirst()
+                .ifPresentOrElse(Pairs.consume((String s1, String s2) -> {
+                    assertEquals("Expected Double.toString(42.0/67.0) to be correct", Double.toString(42.0/67.0), s1);
+                    assertEquals("Expected Double.toHexString(42.0*67.0) to be correct", Double.toHexString(42.0*67.0), s2);
+                }), Assert::fail);
     }
 
     @Test public void testStream() {
@@ -191,7 +270,7 @@ public class PairTest {
         assertEquals("Expecting the number of pairs to be exactly half the number of original items.",
                 len / 2, pairs.size());
         Pairs.zip(IntStream.range(0, len/2).map(i -> i * 2), pairs.stream())
-                .forEach(Pairs.consume((int i, DoublePair pair) -> {
+                .forEach(Pairs.consumeIO((i, pair) -> {
                     assertEquals(doubleArray[i], pair.v1(), 0.0);
                     assertEquals(doubleArray[i+1], pair.v2(), 0.0);
                 }));
@@ -204,7 +283,7 @@ public class PairTest {
         assertEquals("Expecting the number of pairs to be exactly half the number of original items.",
                 len / 2, pairs.size());
         Pairs.zip(IntStream.range(0, len/2).map(i -> i * 2), pairs.stream())
-                .forEach(Pairs.consume((int i, LongPair pair) -> {
+                .forEach(Pairs.consumeIO((i, pair) -> {
                     assertEquals(longArray[i], pair.v1());
                     assertEquals(longArray[i+1], pair.v2());
                 }));
@@ -217,7 +296,7 @@ public class PairTest {
         assertEquals("Expecting the number of pairs to be exactly half the number of original items.",
                 len / 2, pairs.size());
         Pairs.zip(IntStream.range(0, len/2).map(i -> i * 2), pairs.stream())
-                .forEach(Pairs.consume((int i, IntPair pair) -> {
+                .forEach(Pairs.consumeIO((i, pair) -> {
                     assertEquals(intArray[i], pair.v1());
                     assertEquals(intArray[i+1], pair.v2());
                 }));
@@ -288,7 +367,7 @@ public class PairTest {
         assertEquals("Expecting the number of windows to be 1 less than the original array size",
                 len - 1, pairs.size());
         Index.of(pairs.stream())
-                .forEach(Pairs.consume((int i, Pair<UUID, UUID> pair) -> {
+                .forEach(Pairs.consumeIO((i, pair) -> {
                     assertEquals(uuidArray[i], pair.v1());
                     assertEquals(uuidArray[i+1], pair.v2());
                 }));
@@ -301,7 +380,7 @@ public class PairTest {
         assertEquals("Expecting the number of windows to be 1 less than the original array size",
                 len - 1, pairs.size());
         Index.of(pairs.stream())
-                .forEach(Pairs.consume((int i, DoublePair pair) -> {
+                .forEach(Pairs.consumeIO((i, pair) -> {
                     assertEquals(doubleArray[i], pair.v1(), 0.0);
                     assertEquals(doubleArray[i+1], pair.v2(), 0.0);
                 }));
@@ -314,7 +393,7 @@ public class PairTest {
         assertEquals("Expecting the number of windows to be 1 less than the original array size",
                 len - 1, pairs.size());
         Index.of(pairs.stream())
-                .forEach(Pairs.consume((int i, LongPair pair) -> {
+                .forEach(Pairs.consumeIO((i, pair) -> {
                     assertEquals(longArray[i], pair.v1());
                     assertEquals(longArray[i+1], pair.v2());
                 }));
@@ -327,7 +406,7 @@ public class PairTest {
         assertEquals("Expecting the number of windows to be 1 less than the original array size",
                 len - 1, pairs.size());
         Index.of(pairs.stream())
-                .forEach(Pairs.consume((int i, IntPair pair) -> {
+                .forEach(Pairs.consumeIO((i, pair) -> {
                     assertEquals(intArray[i], pair.v1());
                     assertEquals(intArray[i+1], pair.v2());
                 }));
