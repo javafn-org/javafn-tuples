@@ -22,24 +22,25 @@ repositories {
     mavenCentral()
 }
 
-def generatedMainJava = file("$buildDir/generated/main/java")
-
-sourceSets {
-	codeGen {
-		java.srcDir 'src/codeGen/java'
-	}
-	main {
-		java.srcDirs += generatedMainJava
-	}
-}
-
+def generatedMainJava = layout.buildDirectory.dir("generated/main/java")
 
 tasks.register('genSrc', JavaExec) {
 	group = 'code generation'
 	description = 'Generates source'
 	classpath = sourceSets.codeGen.runtimeClasspath
 	mainClass = 'org.javafn.tupleGen.GenerateTuples'
-	outputs.dir generatedMainJava
+	outputs.dir(generatedMainJava)
+	workingDir = projectDir
+	args generatedMainJava.get().asFile.absolutePath
+}
+
+sourceSets {
+	codeGen {
+		java.srcDir 'src/codeGen/java'
+	}
+	main {
+		java.srcDir(tasks.named('genSrc'))
+	}
 }
 
 tasks.named('compileJava') { dependsOn tasks.named('genSrc') }
@@ -101,7 +102,7 @@ signing {
 	project.ext.set('signing.gnupg.passphrase', System.getenv("OSSRH_GPG_SECRET_KEY_PASSWORD"))
 }
 
-tasks.withType(Sign) {
+tasks.withType(Sign).configureEach {
 	onlyIf { System.getenv().containsKey("CI") }
 }
 
