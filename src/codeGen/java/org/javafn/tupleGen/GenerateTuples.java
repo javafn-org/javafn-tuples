@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
@@ -163,6 +164,28 @@ public class GenerateTuples {
                             ParameterizedTypeName.get(ClassName.get(Map.class), genericArgs)))
                     .addStatement("return $T.toMap(Pair::v1, Pair::v2)", Collectors.class)
                     .build());
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("toTrio")
+                    .addTypeVariable(Generic.V3.varTypeName())
+                    .addModifiers(Modifier.PUBLIC)
+                    .addParameter(ParameterSpec.builder(Generic.V3.varTypeName(), "v3", Modifier.FINAL).build())
+                    .returns(ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Trio"),
+                            Data.append(tuple.genericArgs(), Generic.V3.varTypeName())))
+                    .addStatement("return new $T<>(v1, v2, $L)", ClassName.get(PACKAGE_NAME, "Trio"), "v3")
+                    .build());
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("toTrio")
+                    .addTypeVariable(Generic.V3.varTypeName())
+                    .addModifiers(Modifier.PUBLIC)
+                    .addParameter(ParameterSpec.builder(
+                            ParameterizedTypeName.get(ClassName.get(BiFunction.class),
+                                    Generic.V1.varTypeName(),
+                                    Generic.V2.varTypeName(),
+                                    Generic.V3.varTypeName()),
+                            "fn",
+                            Modifier.FINAL).build())
+                    .returns(ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Trio"),
+                            Data.append(tuple.genericArgs(), Generic.V3.varTypeName())))
+                    .addStatement("return new $T<>(v1, v2, fn.apply(v1, v2))", ClassName.get(PACKAGE_NAME, "Trio"))
+                    .build());
         } else if ("Index".equals(tuple.name().simpleName())) {
             final ClassName streamIndexerClassName = ClassName.get(PACKAGE_NAME, "Index", "StreamIndexer");
             tupleClassBuilder.addType(TypeSpec.classBuilder(streamIndexerClassName)
@@ -189,6 +212,30 @@ public class GenerateTuples {
                     .addModifiers(Modifier.PUBLIC)
                     .addStatement("return v1")
                     .build());
+        } else if (TupleType.Trio.name().equals(tuple.name().simpleName())) {
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("toQuad")
+                    .addTypeVariable(Generic.V4.varTypeName())
+                    .addModifiers(Modifier.PUBLIC)
+                    .addParameter(ParameterSpec.builder(Generic.V4.varTypeName(), "v4", Modifier.FINAL).build())
+                    .returns(ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Quad"),
+                            Data.append(tuple.genericArgs(), Generic.V4.varTypeName())))
+                    .addStatement("return new $T<>(v1, v2, v3, $L)", ClassName.get(PACKAGE_NAME, "Quad"), "v4")
+                    .build());
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("toQuad")
+                    .addTypeVariable(Generic.V4.varTypeName())
+                    .addModifiers(Modifier.PUBLIC)
+                    .addParameter(ParameterSpec.builder(
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Trio" , "TrioFunction"),
+                                    Generic.V1.varTypeName(),
+                                    Generic.V2.varTypeName(),
+                                    Generic.V3.varTypeName(),
+                                    Generic.V4.varTypeName()),
+                            "fn",
+                            Modifier.FINAL).build())
+                    .returns(ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Quad"),
+                            Data.append(tuple.genericArgs(), Generic.V4.varTypeName())))
+                    .addStatement("return new $T<>(v1, v2, v3, fn.apply(v1, v2, v3))", ClassName.get(PACKAGE_NAME, "Quad"))
+                    .build());
         }
     }
     static void customizeHelper(final TypeSpec.Builder tupleClassBuilder, final TupleType tupleType) {
@@ -209,6 +256,78 @@ public class GenerateTuples {
                             Generic.A.varTypeName(),
                             ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Index"), Generic.A.varTypeName())))
                     .addStatement("return new $T<A>()::accept", streamIndexerClassName)
+                    .build());
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("toTrio")
+                    .addTypeVariables(Arrays.asList(Generic.V1.varTypeName(), Generic.V2.varTypeName(), Generic.V3.varTypeName()))
+                    .addModifiers(Modifier.STATIC, Modifier.PUBLIC)
+                    .addParameter(ParameterSpec.builder(Generic.V3.varTypeName(), "v3", Modifier.FINAL).build())
+                    .returns(ParameterizedTypeName.get(ClassName.get(Function.class),
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Pair"),
+                                    Generic.V1.varTypeName(), Generic.V2.varTypeName()),
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Trio"),
+                                    Generic.V1.varTypeName(), Generic.V2.varTypeName(), Generic.V3.varTypeName())))
+                    .addStatement("return p -> p.toTrio($L)", "v3")
+                    .build());
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("toTrio")
+                    .addTypeVariables(Arrays.asList(Generic.V1.varTypeName(), Generic.V2.varTypeName(), Generic.V3.varTypeName()))
+                    .addModifiers(Modifier.STATIC, Modifier.PUBLIC)
+                    .addParameter(ParameterSpec.builder(
+                            ParameterizedTypeName.get(ClassName.get(BiFunction.class),
+                                    Generic.V1.varTypeName(),
+                                    Generic.V2.varTypeName(),
+                                    Generic.V3.varTypeName()),
+                            "fn",
+                            Modifier.FINAL).build())
+                    .returns(ParameterizedTypeName.get(ClassName.get(Function.class),
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Pair"),
+                                    Generic.V1.varTypeName(), Generic.V2.varTypeName()),
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Trio"),
+                                    Generic.V1.varTypeName(), Generic.V2.varTypeName(), Generic.V3.varTypeName())))
+                    .addStatement("return p -> p.toTrio(fn)")
+                    .build());
+        } else if (tupleType.equals(TupleType.Trio)) {
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("toQuad")
+                    .addTypeVariables(Arrays.asList(
+                            Generic.V1.varTypeName(),
+                            Generic.V2.varTypeName(),
+                            Generic.V3.varTypeName(),
+                            Generic.V4.varTypeName()))
+                    .addModifiers(Modifier.STATIC, Modifier.PUBLIC)
+                    .addParameter(ParameterSpec.builder(TypeVariableName.get("V4"), "v4", Modifier.FINAL).build())
+                    .returns(ParameterizedTypeName.get(ClassName.get(Function.class),
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Trio"),
+                                    Generic.V1.varTypeName(), Generic.V2.varTypeName(), Generic.V3.varTypeName()),
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Quad"),
+                                    Generic.V1.varTypeName(),
+                                    Generic.V2.varTypeName(),
+                                    Generic.V3.varTypeName(),
+                                    Generic.V4.varTypeName())))
+                    .addStatement("return t -> t.toQuad($L)", "v4")
+                    .build());
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("toQuad")
+                    .addTypeVariables(Arrays.asList(
+                            Generic.V1.varTypeName(),
+                            Generic.V2.varTypeName(),
+                            Generic.V3.varTypeName(),
+                            Generic.V4.varTypeName()))
+                    .addModifiers(Modifier.STATIC, Modifier.PUBLIC)
+                    .addParameter(ParameterSpec.builder(
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Trio" , "TrioFunction"),
+                                    Generic.V1.varTypeName(),
+                                    Generic.V2.varTypeName(),
+                                    Generic.V3.varTypeName(),
+                                    Generic.V4.varTypeName()),
+                            "fn",
+                            Modifier.FINAL).build())
+                    .returns(ParameterizedTypeName.get(ClassName.get(Function.class),
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Trio"),
+                                    Generic.V1.varTypeName(), Generic.V2.varTypeName(), Generic.V3.varTypeName()),
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Quad"),
+                                    Generic.V1.varTypeName(),
+                                    Generic.V2.varTypeName(),
+                                    Generic.V3.varTypeName(),
+                                    Generic.V4.varTypeName())))
+                    .addStatement("return t -> t.toQuad(fn)")
                     .build());
         }
     }

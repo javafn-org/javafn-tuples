@@ -166,7 +166,7 @@ public record Tuple(
 	public List<MethodSpec> genStaticPredicates(final FunctionalInterfaces fi) {
 		final List<MethodSpec> ms = new ArrayList<>(entries.size() + 1);
 		// Full element list matches
-		ms.add(MethodSpec.methodBuilder("matches")
+		ms.add(MethodSpec.methodBuilder("matches" + getQualifier(this))
 				.addTypeVariables(Arrays.asList(genericArgs))
 				.returns(ParameterizedTypeName.get(ClassName.get(Predicate.class), nameWithGenerics))
 				.addParameter(ParameterSpec.builder(
@@ -215,7 +215,7 @@ public record Tuple(
 	public List<MethodSpec> genStaticConsumers(final FunctionalInterfaces fi) {
 		final List<MethodSpec> ms = new ArrayList<>(entries.size() + 1);
 		// Full element list peekers
-		ms.add(MethodSpec.methodBuilder("peek")
+		ms.add(MethodSpec.methodBuilder("peek" + getQualifier(this))
 				.addTypeVariables(Arrays.asList(genericArgs))
 				.returns(ParameterizedTypeName.get(ClassName.get(Consumer.class), nameWithGenerics))
 				.addParameter(ParameterSpec.builder(
