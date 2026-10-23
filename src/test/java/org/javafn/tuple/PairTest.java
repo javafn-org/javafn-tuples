@@ -65,7 +65,7 @@ public class PairTest {
         assertEquals("All elements should be equal",
                 numElements, zipped.stream()
                         .map(p -> p.map1ToLong(i -> i))
-                        .filter(Pairs.matches((long l, long r) -> l == r))
+                        .filter(Pairs.matchesLL((long l, long r) -> l == r))
                         .count());
     }
 
@@ -257,7 +257,7 @@ public class PairTest {
         assertEquals("Expecting the number of pairs to be exactly half the number of original items.",
                 len / 2, pairs.size());
         Pairs.zip(IntStream.range(0, len/2).map(i -> i * 2), pairs.stream())
-                .forEach(Pairs.peek((int i, Pair<UUID, UUID> pair) -> {
+                .forEach(Pairs.peekIO((int i, Pair<UUID, UUID> pair) -> {
                     assertEquals(uuidArray[i], pair.v1());
                     assertEquals(uuidArray[i+1], pair.v2());
         }));
