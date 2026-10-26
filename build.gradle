@@ -46,9 +46,10 @@ sourceSets {
 tasks.named('compileJava') { dependsOn tasks.named('genSrc') }
 
 dependencies {
-	codeGenCompileOnly("com.github.spotbugs:spotbugs-annotations:4.9.+")
+	codeGenImplementation("com.github.spotbugs:spotbugs-annotations:4.9.+")
 	codeGenImplementation('org.javafn:javafn-utils:0.1.+')
 	codeGenImplementation('com.palantir.javapoet:javapoet:0.14.0')
+	implementation("com.github.spotbugs:spotbugs-annotations:4.9.+")
 	testImplementation('junit:junit:4.13.1')
 }
 
