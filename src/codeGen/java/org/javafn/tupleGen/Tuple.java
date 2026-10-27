@@ -128,17 +128,9 @@ public record Tuple(
 	}
 
 	public MethodSpec genConstructor() {
-		final var builder = MethodSpec.constructorBuilder()
+		return MethodSpec.constructorBuilder()
 				.addParameters(entryFields)
-				.addModifiers(Modifier.PUBLIC);
-		entryFields.forEach(arg -> {
-			if (arg.type().isPrimitive()) {
-				builder.addStatement("this.$L = $L", arg.name(), arg.name());
-			} else {
-				builder.addStatement("this.$L = Objects.requireNonNull($L)", arg.name(), arg.name());
-			}
-		});
-		return builder.build();
+				.build();
 	}
 
 	public MethodSpec genStaticFactory() {

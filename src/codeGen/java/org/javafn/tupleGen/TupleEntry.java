@@ -6,7 +6,6 @@ import com.palantir.javapoet.ParameterSpec;
 import com.palantir.javapoet.ParameterizedTypeName;
 import com.palantir.javapoet.TypeName;
 import com.palantir.javapoet.TypeVariableName;
-import edu.umd.cs.findbugs.annotations.NonNull;
 import org.javafn.tupleGen.Util.Generic;
 import org.javafn.tupleGen.Util.MapperType;
 import org.javafn.utils.Data;
@@ -155,9 +154,7 @@ public sealed interface TupleEntry permits
 		@Override public TypeVariableName varTypeName() { return generic.varTypeName(); }
 		@Override public boolean isObj() { return true; }
 		@Override public ParameterSpec paramSpec(final Modifier... modifiers) {
-			return ParameterSpec.builder(generic.varTypeName(), generic.fieldName(), modifiers)
-					.addAnnotation(NonNull.class)
-					.build();
+			return ParameterSpec.builder(generic.varTypeName(), generic.fieldName(), modifiers).build();
 		}
 		@Override public TypeName predicateName() {
 			return ParameterizedTypeName.get(ClassName.get(Predicate.class), generic.varTypeName());
