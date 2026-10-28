@@ -159,7 +159,10 @@ public class GenerateTuples {
                     .addTypeVariables(Arrays.asList(genericArgs))
                     .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
                     .returns(ParameterizedTypeName.get(ClassName.get(Collector.class),
-                            ParameterizedTypeName.get(tuple.name(), genericArgs),
+                            ParameterizedTypeName.get(tuple.name(),
+                                    Arrays.stream(genericArgs)
+                                            .map(n -> TypeVariableName.get("? extends " + n.name()))
+                                            .toArray(TypeVariableName[]::new)),
                             TypeVariableName.get("?"),
                             ParameterizedTypeName.get(ClassName.get(Map.class), genericArgs)))
                     .addStatement("return $T.toMap(Pair::v1, Pair::v2)", Collectors.class)

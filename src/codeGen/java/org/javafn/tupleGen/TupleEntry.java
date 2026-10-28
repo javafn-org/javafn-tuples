@@ -511,7 +511,6 @@ public sealed interface TupleEntry permits
 				.returns(ParameterizedTypeName.get(ClassName.get(Function.class), tuple.nameWithGenerics(), returnType))
 				.addParameter(fullArgMapper)
 				.addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-				.addComment("In _genStaticFullArgMapper")
 				.addStatement("return tuple -> tuple.$L(fn)", memberMethodName)
 				.build();
 	}
