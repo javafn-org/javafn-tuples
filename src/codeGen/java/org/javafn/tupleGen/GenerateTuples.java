@@ -147,7 +147,7 @@ public class GenerateTuples {
                     TypeVariableName.get("VAL")};
             tupleClassBuilder.addMethod(MethodSpec.methodBuilder("from")
                     .addTypeVariables(Arrays.asList(genericArgs))
-                    .addModifiers(Modifier.PUBLIC)
+                    .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
                     .addParameter(ParameterSpec.builder(
                             ParameterizedTypeName.get(ClassName.get(Entry.class), genericArgs),
                             "e", Modifier.FINAL).build())
