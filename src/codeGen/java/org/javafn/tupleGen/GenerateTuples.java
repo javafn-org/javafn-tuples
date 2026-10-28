@@ -23,6 +23,8 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.IntFunction;
+import java.util.function.IntFunction;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -202,13 +204,33 @@ public class GenerateTuples {
                             .addStatement("return new Index<>(count++, a)")
                             .build())
                     .build());
-            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("of")
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("over")
                     .addModifiers(Modifier.STATIC, Modifier.PUBLIC)
                     .addTypeVariable(Generic.A.varTypeName())
                     .returns(ParameterizedTypeName.get(ClassName.get(Stream.class),
                             ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Index"), Generic.A.varTypeName())))
                     .addParameter(ParameterizedTypeName.get(ClassName.get(Stream.class), Generic.A.varTypeName()), "stream", Modifier.FINAL)
-                    .addStatement("return stream.map(new $T<A>()::accept)", streamIndexerClassName)
+                    .addStatement("return stream.map(new $T<$T>()::accept)", streamIndexerClassName, Generic.A.varTypeName())
+                    .build());
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("each")
+                    .addModifiers(Modifier.STATIC, Modifier.PUBLIC)
+                    .addTypeVariable(Generic.A.varTypeName())
+                    .returns(ParameterizedTypeName.get(ClassName.get(Function.class),
+                            Generic.A.varTypeName(),
+                            ParameterizedTypeName.get(tuple.name(), Generic.A.varTypeName())))
+                    .addStatement("return new $T<$T>()::accept", streamIndexerClassName, Generic.A.varTypeName())
+                    .build());
+            tupleClassBuilder.addMethod(MethodSpec.methodBuilder("eachAs")
+                    .addModifiers(Modifier.STATIC, Modifier.PUBLIC)
+                    .addTypeVariables(List.of(Generic.A.varTypeName(), Generic.R.varTypeName()))
+                    .addParameter(ParameterSpec.builder(
+                            ParameterizedTypeName.get(ClassName.get(IntFunction.class), Generic.R.varTypeName()),
+                            "fn", Modifier.FINAL).build())
+                    .returns(ParameterizedTypeName.get(ClassName.get(Function.class),
+                            Generic.A.varTypeName(),
+                            ParameterizedTypeName.get(ClassName.get(PACKAGE_NAME, "Pair"), Generic.R.varTypeName(), Generic.A.varTypeName())))
+                    .addStatement("final $T<$T> indexer = new $T<>()", streamIndexerClassName, Generic.A.varTypeName(), streamIndexerClassName)
+                    .addStatement("return a -> indexer.accept(a).map1ToObj(fn)")
                     .build());
             tupleClassBuilder.addMethod(MethodSpec.methodBuilder("i")
                     .returns(TypeName.INT)
