@@ -366,7 +366,7 @@ public class PairTest {
         final List<Pair<UUID, UUID>> pairs = Pairs.windows(uuidArray).toList();
         assertEquals("Expecting the number of windows to be 1 less than the original array size",
                 len - 1, pairs.size());
-        Index.of(pairs.stream())
+        Index.over(pairs.stream())
                 .forEach(Pairs.consumeIO((i, pair) -> {
                     assertEquals(uuidArray[i], pair.v1());
                     assertEquals(uuidArray[i+1], pair.v2());
@@ -379,7 +379,7 @@ public class PairTest {
         final List<DoublePair> pairs = Pairs.windows(doubleArray).toList();
         assertEquals("Expecting the number of windows to be 1 less than the original array size",
                 len - 1, pairs.size());
-        Index.of(pairs.stream())
+        Index.over(pairs.stream())
                 .forEach(Pairs.consumeIO((i, pair) -> {
                     assertEquals(doubleArray[i], pair.v1(), 0.0);
                     assertEquals(doubleArray[i+1], pair.v2(), 0.0);
@@ -392,7 +392,7 @@ public class PairTest {
         final List<LongPair> pairs = Pairs.windows(longArray).toList();
         assertEquals("Expecting the number of windows to be 1 less than the original array size",
                 len - 1, pairs.size());
-        Index.of(pairs.stream())
+        Index.over(pairs.stream())
                 .forEach(Pairs.consumeIO((i, pair) -> {
                     assertEquals(longArray[i], pair.v1());
                     assertEquals(longArray[i+1], pair.v2());
@@ -405,7 +405,7 @@ public class PairTest {
         final List<IntPair> pairs = Pairs.windows(intArray).toList();
         assertEquals("Expecting the number of windows to be 1 less than the original array size",
                 len - 1, pairs.size());
-        Index.of(pairs.stream())
+        Index.over(pairs.stream())
                 .forEach(Pairs.consumeIO((i, pair) -> {
                     assertEquals(intArray[i], pair.v1());
                     assertEquals(intArray[i+1], pair.v2());
